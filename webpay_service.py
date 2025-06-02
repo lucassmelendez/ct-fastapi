@@ -64,6 +64,13 @@ class WebpayService:
             if not return_url:
                 return_url = WebpayConfig.get_return_url()
             
+            print(f"🔄 Creando transacción Webpay:")
+            print(f"   - Amount: {amount}")
+            print(f"   - Buy Order: {buy_order}")
+            print(f"   - Session ID: {session_id}")
+            print(f"   - Return URL: {return_url}")
+            print(f"   - Environment: {self.environment}")
+            
             # Crear la transacción
             response = self.transaction.create(
                 buy_order=buy_order,
@@ -72,10 +79,34 @@ class WebpayService:
                 return_url=return_url
             )
             
-            return {
+            print(f"📥 Respuesta de Webpay: {type(response)}")
+            print(f"📥 Contenido: {response}")
+            
+            # Manejar tanto objetos como diccionarios
+            if hasattr(response, 'token') and hasattr(response, 'url'):
+                # Es un objeto con atributos
+                token = response.token
+                url = response.url
+            elif isinstance(response, dict):
+                # Es un diccionario
+                token = response.get('token')
+                url = response.get('url')
+            else:
+                # Intentar acceder como atributos primero, luego como diccionario
+                try:
+                    token = getattr(response, 'token', None)
+                    url = getattr(response, 'url', None)
+                except:
+                    token = response.get('token') if hasattr(response, 'get') else None
+                    url = response.get('url') if hasattr(response, 'get') else None
+            
+            if not token or not url:
+                raise ValueError(f"Respuesta inválida de Webpay. Token: {token}, URL: {url}")
+            
+            result = {
                 "success": True,
-                "token": response.token,
-                "url": response.url,
+                "token": token,
+                "url": url,
                 "buy_order": buy_order,
                 "session_id": session_id,
                 "amount": amount,
@@ -83,10 +114,17 @@ class WebpayService:
                 "created_at": datetime.now().isoformat()
             }
             
+            print(f"✅ Transacción creada exitosamente: {result}")
+            return result
+            
         except Exception as e:
+            error_msg = str(e)
+            print(f"❌ Error al crear transacción: {error_msg}")
+            print(f"❌ Tipo de error: {type(e)}")
+            
             return {
                 "success": False,
-                "error": str(e),
+                "error": error_msg,
                 "message": "Error al crear la transacción",
                 "environment": self.environment
             }
