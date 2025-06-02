@@ -22,6 +22,7 @@ else:
     print("❌ ADVERTENCIA: Credenciales de Supabase no configuradas")
 
 from webpay_service import WebpayService
+from bcentral_service import BCentralService
 from config import AppConfig, WebpayConfig
 
 # Crear la aplicación FastAPI
@@ -84,6 +85,15 @@ except ValueError as e:
     print(f"❌ Error de configuración de Webpay: {e}")
     print("💡 Copia el archivo env.template a .env y configura las variables de entorno")
     webpay_service = None
+
+# Inicializar servicio del Banco Central
+try:
+    bcentral_service = BCentralService()
+    print("✅ Servicio del Banco Central inicializado correctamente")
+except Exception as e:
+    print(f"❌ Error de configuración del Banco Central: {e}")
+    print("💡 Verifica las credenciales del Banco Central en el archivo .env")
+    bcentral_service = None
 
 # Modelos Pydantic
 class Cow(BaseModel):
