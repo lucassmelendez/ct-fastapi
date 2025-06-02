@@ -6,6 +6,7 @@ from typing import List, Optional
 import uvicorn
 import os
 import time
+import httpx
 
 # Configurar variables de entorno para Supabase
 try:
@@ -504,35 +505,41 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
             if user_id_part:
                 print(f"🔍 Buscando usuario con UID que termine en: {user_id_part}")
                 
-                # Inicializar Supabase
-                from supabase import create_client, Client
-                import time
+                # Inicializar Supabase con configuración mínima
+                from supabase import create_client
                 
                 supabase_url = os.getenv("SUPABASE_URL")
                 supabase_key = os.getenv("SUPABASE_ANON_KEY")
                 
                 if not supabase_url or not supabase_key:
-                    print("❌ Credenciales de Supabase no configuradas")
                     raise Exception("Credenciales de Supabase no configuradas")
                 
                 print(f"🔌 Conectando a Supabase URL: {supabase_url}")
                 
                 try:
-                    # Crear cliente de Supabase con timeout reducido
-                    supabase: Client = create_client(supabase_url, supabase_key)
+                    # Crear cliente HTTP con timeout corto
+                    timeout = httpx.Timeout(10.0, connect=5.0)
+                    client = httpx.Client(timeout=timeout)
                     
-                    # Buscar directamente el usuario por id_autentificar
-                    print(f"🔍 Buscando usuario con id_autentificar que contenga: {user_id_part}")
+                    # Construir headers para la petición directa
+                    headers = {
+                        "apikey": supabase_key,
+                        "Authorization": f"Bearer {supabase_key}",
+                        "Content-Type": "application/json"
+                    }
                     
-                    # Primero intentar una búsqueda directa
-                    user_response = supabase.table('usuario').select('*').ilike('id_autentificar', f'%{user_id_part}%').execute()
+                    # Intentar búsqueda directa primero
+                    search_url = f"{supabase_url}/rest/v1/usuario?id_autentificar=ilike.*{user_id_part}*"
+                    response = client.get(search_url, headers=headers)
+                    users = response.json()
                     
-                    if not user_response.data:
-                        # Si no encuentra, intentar obtener todos los usuarios y filtrar
+                    if not users:
+                        # Si no encuentra, obtener todos los usuarios
                         print("⚠️ No se encontró por búsqueda directa, intentando búsqueda alternativa...")
-                        user_response = supabase.table('usuario').select('*').execute()
+                        all_users_url = f"{supabase_url}/rest/v1/usuario"
+                        response = client.get(all_users_url, headers=headers)
+                        users = response.json()
                     
-                    users = user_response.data
                     print(f"📊 Total usuarios encontrados: {len(users)}")
                     
                     # Buscar el usuario que coincida
@@ -552,15 +559,21 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                         # Actualizar a premium si no lo es ya
                         if current_premium != 2:
                             try:
-                                # Actualizar directamente sin verificaciones adicionales
+                                # Actualizar usando PATCH directo
+                                update_url = f"{supabase_url}/rest/v1/usuario?id_usuario=eq.{user_id}"
                                 update_data = {'id_premium': 2}
-                                update_response = supabase.table('usuario').update(update_data).eq('id_usuario', user_id).execute()
                                 
-                                if update_response.data:
+                                update_response = client.patch(
+                                    update_url,
+                                    headers=headers,
+                                    json=update_data
+                                )
+                                
+                                if update_response.status_code in [200, 204]:
                                     print("✅ Usuario actualizado a Premium exitosamente!")
                                 else:
-                                    print("❌ Error: Respuesta vacía al actualizar usuario")
-                                    raise Exception("Error al actualizar usuario - respuesta vacía")
+                                    print(f"❌ Error en actualización: {update_response.text}")
+                                    raise Exception(f"Error al actualizar usuario: {update_response.text}")
                             except Exception as update_error:
                                 print(f"❌ Error en actualización: {update_error}")
                                 raise Exception(f"Error en actualización: {update_error}")
@@ -570,9 +583,13 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                         print("❌ No se encontró el usuario")
                         raise Exception("Usuario no encontrado")
                         
-                except Exception as supabase_error:
-                    print(f"❌ Error con Supabase: {supabase_error}")
-                    raise Exception(f"Error con Supabase: {supabase_error}")
+                except Exception as api_error:
+                    print(f"❌ Error en API Supabase: {api_error}")
+                    raise Exception(f"Error en API Supabase: {api_error}")
+                finally:
+                    # Cerrar el cliente HTTP
+                    if 'client' in locals():
+                        client.close()
             else:
                 print("❌ No se pudo extraer ID de usuario del buy_order")
                 raise Exception("Formato de buy_order inválido")
