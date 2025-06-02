@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 import uvicorn
 import os
+import time
 
 # Configurar variables de entorno para Supabase
 try:
@@ -514,67 +515,111 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                     raise Exception("Credenciales de Supabase no configuradas")
                 
                 # Inicializar el cliente Supabase con manejo de errores específico
-                try:
-                    # Para debugging, imprimir los parámetros de conexión
-                    print(f"🔌 Conectando a Supabase URL: {supabase_url}")
-                    supabase: Client = create_client(supabase_url, supabase_key)
-                except TypeError as e:
-                    if 'proxy' in str(e):
-                        print(f"⚠️ Error con el parámetro proxy: {e}")
-                        # Intento alternativo: limpiar variables de entorno de proxy
-                        for env_var in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']:
-                            if env_var in os.environ:
-                                print(f"Limpiando variable de entorno: {env_var}")
-                                del os.environ[env_var]
-                        
-                        # Intentar crear el cliente nuevamente
-                        print("🔄 Reintentando conexión sin proxy...")
+                max_retries = 3
+                retry_count = 0
+                
+                while retry_count < max_retries:
+                    try:
+                        # Para debugging, imprimir los parámetros de conexión
+                        print(f"🔌 Conectando a Supabase URL: {supabase_url} (intento {retry_count + 1})")
                         supabase: Client = create_client(supabase_url, supabase_key)
-                    else:
-                        raise
-                
-                # Buscar usuario cuyo id_autentificar termine con user_id_part
-                response = supabase.table('usuario').select('*').like('id_autentificar', f'%{user_id_part}').execute()
-                
-                if response.data and len(response.data) > 0:
-                    user = response.data[0]
-                    user_id = user['id_usuario']
-                    current_premium = user['id_premium']
-                    
-                    print(f"👤 Usuario encontrado: ID {user_id}, Premium actual: {current_premium}")
-                    
-                    if current_premium != 2:
-                        # Actualizar a premium
-                        update_response = supabase.table('usuario').update({
-                            'id_premium': 2
-                        }).eq('id_usuario', user_id).execute()
-                        
-                        if update_response.data:
-                            print(f"✅ Usuario actualizado a Premium exitosamente!")
+                        break
+                    except TypeError as e:
+                        if 'proxy' in str(e):
+                            print(f"⚠️ Error con el parámetro proxy: {e}")
+                            # Intento alternativo: limpiar variables de entorno de proxy
+                            for env_var in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']:
+                                if env_var in os.environ:
+                                    print(f"Limpiando variable de entorno: {env_var}")
+                                    del os.environ[env_var]
                             
-                            # Registrar la transacción en una tabla de pagos (opcional)
-                            try:
-                                payment_record = {
-                                    'id_usuario': user_id,
-                                    'buy_order': buy_order,
-                                    'amount': amount,
-                                    'authorization_code': transaction_result.get('authorization_code'),
-                                    'transaction_date': transaction_result.get('transaction_date'),
-                                    'payment_type': 'webpay_premium_upgrade',
-                                    'status': 'completed'
-                                }
-                                # Nota: Necesitarías crear una tabla 'pagos' en Supabase para esto
-                                print(f"💳 Registro de pago: {payment_record}")
-                            except Exception as payment_log_error:
-                                print(f"⚠️ No se pudo registrar el pago (no crítico): {payment_log_error}")
+                            # Incrementar contador de intentos
+                            retry_count += 1
+                            if retry_count < max_retries:
+                                print("🔄 Reintentando conexión sin proxy...")
+                                continue
+                            else:
+                                raise Exception(f"No se pudo conectar después de {max_retries} intentos: {e}")
                         else:
-                            print(f"❌ Error al actualizar usuario a premium")
-                            raise Exception("Error al actualizar usuario")
+                            raise
+                    except OSError as e:
+                        # Manejar error de recurso ocupado
+                        print(f"⚠️ Error de recurso ocupado: {e}")
+                        retry_count += 1
+                        if retry_count < max_retries:
+                            print(f"🔄 Esperando 2 segundos antes de reintentar... (intento {retry_count + 1})")
+                            time.sleep(2)  # Esperar 2 segundos antes de reintentar
+                            continue
+                        else:
+                            raise Exception(f"No se pudo conectar después de {max_retries} intentos: {e}")
+                
+                # Buscar usuario cuyo id_autentificar coincida con user_id_part
+                try:
+                    print(f"🔍 Buscando usuario con id_autentificar que contenga: {user_id_part}")
+                    # Modificar la consulta para adaptarse a la estructura de la base de datos
+                    # Primero, verificar la tabla de usuarios
+                    user_response = supabase.table('usuario').select('*').execute()
+                    print(f"📊 Total usuarios encontrados: {len(user_response.data)}")
+                    
+                    # Buscar el usuario que coincida con el patrón en id_autentificar
+                    # Nota: Como id_autentificar es int8, necesitamos convertir user_id_part a entero
+                    matching_users = []
+                    try:
+                        id_auth_part = int(user_id_part)
+                        print(f"🔢 Buscando id_autentificar que contenga: {id_auth_part}")
+                        for user in user_response.data:
+                            # Convertir id_autentificar a string para poder buscar el patrón
+                            id_auth_str = str(user.get('id_autentificar', ''))
+                            print(f"👤 Usuario ID: {user.get('id_usuario')}, id_autentificar: {id_auth_str}")
+                            if user_id_part in id_auth_str:
+                                matching_users.append(user)
+                    except ValueError:
+                        print(f"⚠️ No se pudo convertir {user_id_part} a entero")
+                    
+                    if matching_users:
+                        # Tomar el primer usuario que coincida
+                        user = matching_users[0]
+                        user_id = user['id_usuario']
+                        current_premium = user['id_premium']
+                        
+                        print(f"👤 Usuario encontrado: ID {user_id}, Premium actual: {current_premium}")
+                        
+                        # La ID Premium 2 parece ser la de usuario premium según tu estructura
+                        if current_premium != 2:
+                            # Actualizar a premium
+                            update_response = supabase.table('usuario').update({
+                                'id_premium': 2
+                            }).eq('id_usuario', user_id).execute()
+                            
+                            if update_response.data:
+                                print(f"✅ Usuario actualizado a Premium exitosamente!")
+                                
+                                # Registrar la transacción en una tabla de pagos (opcional)
+                                try:
+                                    payment_record = {
+                                        'id_usuario': user_id,
+                                        'buy_order': buy_order,
+                                        'amount': amount,
+                                        'authorization_code': transaction_result.get('authorization_code'),
+                                        'transaction_date': transaction_result.get('transaction_date'),
+                                        'payment_type': 'webpay_premium_upgrade',
+                                        'status': 'completed'
+                                    }
+                                    # Nota: Necesitarías crear una tabla 'pagos' en Supabase para esto
+                                    print(f"💳 Registro de pago: {payment_record}")
+                                except Exception as payment_log_error:
+                                    print(f"⚠️ No se pudo registrar el pago (no crítico): {payment_log_error}")
+                            else:
+                                print(f"❌ Error al actualizar usuario a premium")
+                                raise Exception("Error al actualizar usuario")
+                        else:
+                            print(f"ℹ️ Usuario ya era premium")
                     else:
-                        print(f"ℹ️ Usuario ya era premium")
-                else:
-                    print(f"❌ No se encontró usuario con UID que termine en: {user_id_part}")
-                    raise Exception("Usuario no encontrado")
+                        print(f"❌ No se encontró usuario con id_autentificar que contenga: {user_id_part}")
+                        raise Exception("Usuario no encontrado")
+                except Exception as query_error:
+                    print(f"❌ Error al consultar la base de datos: {query_error}")
+                    raise Exception(f"Error al consultar la base de datos: {query_error}")
             else:
                 print(f"❌ No se pudo extraer el ID de usuario del buy_order: {buy_order}")
                 raise Exception("Formato de buy_order inválido")
@@ -812,6 +857,102 @@ async def get_transaction_by_order(buy_order: str):
     if not transaction:
         raise HTTPException(status_code=404, detail="Transacción no encontrada")
     return transaction
+
+@app.post("/activate-premium/{buy_order}")
+async def activate_premium_manually(buy_order: str):
+    """
+    Activar manualmente una cuenta premium usando el buy_order
+    Útil cuando el proceso automático falló pero el pago fue exitoso
+    """
+    if not buy_order or not buy_order.startswith("prem_"):
+        raise HTTPException(status_code=400, detail="Orden de compra inválida. Debe comenzar con 'prem_'")
+    
+    try:
+        # Extraer el user_id_part desde el buy_order
+        parts = buy_order.split('_')
+        if len(parts) < 2:
+            raise HTTPException(status_code=400, detail="Formato de orden de compra inválido")
+        
+        user_id_part = parts[1]
+        
+        # Inicializar Supabase
+        from supabase import create_client, Client
+        import time
+        
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_ANON_KEY")
+        
+        if not supabase_url or not supabase_key:
+            raise HTTPException(status_code=500, detail="Credenciales de Supabase no configuradas")
+        
+        # Conectar a Supabase con reintentos
+        max_retries = 3
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                print(f"🔌 Conectando a Supabase URL: {supabase_url} (intento {retry_count + 1})")
+                supabase: Client = create_client(supabase_url, supabase_key)
+                break
+            except Exception as e:
+                print(f"⚠️ Error de conexión: {e}")
+                retry_count += 1
+                if retry_count < max_retries:
+                    print(f"🔄 Esperando 2 segundos antes de reintentar... (intento {retry_count + 1})")
+                    time.sleep(2)
+                    continue
+                else:
+                    raise HTTPException(status_code=500, detail=f"No se pudo conectar a Supabase después de {max_retries} intentos")
+        
+        # Buscar todos los usuarios
+        user_response = supabase.table('usuario').select('*').execute()
+        
+        # Buscar usuario por coincidencia en id_autentificar
+        matching_users = []
+        try:
+            for user in user_response.data:
+                id_auth_str = str(user.get('id_autentificar', ''))
+                if user_id_part in id_auth_str:
+                    matching_users.append(user)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error al buscar usuarios: {str(e)}")
+        
+        if not matching_users:
+            raise HTTPException(status_code=404, detail=f"No se encontró usuario con id_autentificar que contenga: {user_id_part}")
+        
+        # Tomar el primer usuario que coincida
+        user = matching_users[0]
+        user_id = user['id_usuario']
+        current_premium = user['id_premium']
+        
+        # Si ya es premium, informar
+        if current_premium == 2:
+            return {
+                "success": True,
+                "message": "El usuario ya tiene estado Premium",
+                "user_id": user_id,
+                "buy_order": buy_order
+            }
+        
+        # Actualizar a premium
+        update_response = supabase.table('usuario').update({
+            'id_premium': 2
+        }).eq('id_usuario', user_id).execute()
+        
+        if not update_response.data:
+            raise HTTPException(status_code=500, detail="Error al actualizar usuario a premium")
+        
+        return {
+            "success": True,
+            "message": "Usuario actualizado a Premium exitosamente",
+            "user_id": user_id,
+            "buy_order": buy_order
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al activar premium: {str(e)}")
 
 # Para desarrollo local
 if __name__ == "__main__":
