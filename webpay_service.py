@@ -1,7 +1,4 @@
 from transbank.webpay.webpay_plus.transaction import Transaction
-from transbank.common.integration_commerce_codes import IntegrationCommerceCodes
-from transbank.common.integration_api_keys import IntegrationApiKeys
-from transbank.common.integration_type import IntegrationType
 import uuid
 from datetime import datetime
 from typing import Dict, Any
@@ -23,17 +20,21 @@ class WebpayService:
             self.environment = WebpayConfig.get_environment()
         
         try:
-            if self.environment == "integration":
-                # Configurar para integración usando las credenciales de las variables de entorno
+            # Configurar las credenciales según la documentación oficial
+            # El SDK viene preconfigurado para integración por defecto
+            if self.environment == "production":
+                # Para producción, configurar las credenciales específicas
                 Transaction.commerce_code = WebpayConfig.get_commerce_code()
                 Transaction.api_key = WebpayConfig.get_api_key()
-                Transaction.integration_type = IntegrationType.TEST
+                # En producción se debe configurar para LIVE
+                # Transaction.integration_type = IntegrationType.LIVE
             else:
-                # Configurar para producción usando las credenciales de las variables de entorno
+                # Para integración, usar las credenciales por defecto o configuradas
                 Transaction.commerce_code = WebpayConfig.get_commerce_code()
                 Transaction.api_key = WebpayConfig.get_api_key()
-                Transaction.integration_type = IntegrationType.LIVE
+                # Para integración se mantiene el valor por defecto TEST
             
+            # Crear instancia de transacción
             self.transaction = Transaction()
             
         except ValueError as e:
