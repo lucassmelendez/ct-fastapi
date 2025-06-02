@@ -506,6 +506,7 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                 
                 # Buscar el usuario en Supabase que tenga un UID que termine con esta parte
                 from supabase import create_client, Client
+                import time
                 
                 supabase_url = os.getenv("SUPABASE_URL")
                 supabase_key = os.getenv("SUPABASE_ANON_KEY")
@@ -514,109 +515,126 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                     print("❌ Credenciales de Supabase no configuradas")
                     raise Exception("Credenciales de Supabase no configuradas")
                 
-                # Inicializar el cliente Supabase con manejo de errores específico
-                max_retries = 3
-                retry_count = 0
-                
-                while retry_count < max_retries:
-                    try:
-                        # Para debugging, imprimir los parámetros de conexión
-                        print(f"🔌 Conectando a Supabase URL: {supabase_url} (intento {retry_count + 1})")
-                        supabase: Client = create_client(supabase_url, supabase_key)
-                        break
-                    except TypeError as e:
-                        if 'proxy' in str(e):
-                            print(f"⚠️ Error con el parámetro proxy: {e}")
-                            # Intento alternativo: limpiar variables de entorno de proxy
-                            for env_var in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']:
-                                if env_var in os.environ:
-                                    print(f"Limpiando variable de entorno: {env_var}")
-                                    del os.environ[env_var]
-                            
-                            # Incrementar contador de intentos
-                            retry_count += 1
-                            if retry_count < max_retries:
-                                print("🔄 Reintentando conexión sin proxy...")
-                                continue
-                            else:
-                                raise Exception(f"No se pudo conectar después de {max_retries} intentos: {e}")
-                        else:
-                            raise
-                    except OSError as e:
-                        # Manejar error de recurso ocupado
-                        print(f"⚠️ Error de recurso ocupado: {e}")
-                        retry_count += 1
-                        if retry_count < max_retries:
-                            print(f"🔄 Esperando 2 segundos antes de reintentar... (intento {retry_count + 1})")
-                            time.sleep(2)  # Esperar 2 segundos antes de reintentar
-                            continue
-                        else:
-                            raise Exception(f"No se pudo conectar después de {max_retries} intentos: {e}")
+                # Para entornos serverless como Vercel, es mejor evitar reintentos que pueden aumentar el tiempo de ejecución
+                try:
+                    print(f"🔌 Conectando a Supabase URL: {supabase_url}")
+                    # Crear un cliente simple sin opciones adicionales
+                    supabase: Client = create_client(supabase_url, supabase_key)
+                except Exception as e:
+                    print(f"❌ Error al conectar con Supabase: {e}")
+                    # Mostrar un mensaje de éxito de pago, pero indicar que debe contactar a soporte
+                    return HTMLResponse(content=f"""
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <title>Pago Procesado - CowTracker</title>
+                            <meta charset="utf-8">
+                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                            <style>
+                                body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f8f9fa; }}
+                                .container {{ max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+                                .warning {{ color: #f39c12; font-size: 24px; margin-bottom: 20px; }}
+                                .message {{ color: #666; margin-bottom: 30px; }}
+                                .details {{ background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0; text-align: left; }}
+                                .button {{ background: #27ae60; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin-bottom: 10px; }}
+                                .secondary-button {{ background: #3498db; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; }}
+                                .button-group {{ display: flex; flex-direction: column; gap: 15px; }}
+                                @media (max-width: 600px) {{ 
+                                    body {{ padding: 20px; }}
+                                    .container {{ padding: 25px; }}
+                                }}
+                            </style>
+                        </head>
+                        <body>
+                            <div class="container">
+                                <div class="warning">⚠️ Pago Procesado</div>
+                                <div class="message">
+                                    Tu pago fue procesado exitosamente, pero hubo un problema al activar tu cuenta Premium automáticamente.
+                                </div>
+                                <div class="details">
+                                    <strong>Detalles del pago:</strong><br>
+                                    Orden: {buy_order}<br>
+                                    Monto: ${amount:,}<br>
+                                    Autorización: {transaction_result.get('authorization_code', 'N/A')}
+                                </div>
+                                <div class="message">
+                                    Por favor, utiliza el siguiente enlace para activar manualmente tu cuenta Premium.
+                                </div>
+                                <div class="button-group">
+                                    <a href="https://ct-fastapi.vercel.app/activate-premium/{buy_order}" class="button">🚀 Activar Premium</a>
+                                    <a href="cowtracker://premium/manual?order={buy_order}" class="secondary-button">🏠 Volver a CowTracker App</a>
+                                    <a href="https://cowtracker.app/premium/manual?order={buy_order}" class="secondary-button">🌐 Abrir CowTracker en Web</a>
+                                </div>
+                            </div>
+                            <script>
+                                // Intento de redirección automática a la app después de 3 segundos
+                                setTimeout(function() {{
+                                    try {{
+                                        // Intentar abrir la app
+                                        window.location.href = "cowtracker://premium/manual?order={buy_order}";
+                                    }} catch (e) {{
+                                        console.error("Error en redirección:", e);
+                                    }}
+                                }}, 3000);
+                            </script>
+                        </body>
+                        </html>
+                    """)
                 
                 # Buscar usuario cuyo id_autentificar coincida con user_id_part
                 try:
                     print(f"🔍 Buscando usuario con id_autentificar que contenga: {user_id_part}")
-                    # Modificar la consulta para adaptarse a la estructura de la base de datos
-                    # Primero, verificar la tabla de usuarios
-                    user_response = supabase.table('usuario').select('*').execute()
-                    print(f"📊 Total usuarios encontrados: {len(user_response.data)}")
                     
-                    # Buscar el usuario que coincida con el patrón en id_autentificar
-                    # Nota: Como id_autentificar es int8, necesitamos convertir user_id_part a entero
-                    matching_users = []
+                    # En lugar de hacer una consulta compleja, obtenemos todos los usuarios
+                    # Esto es más compatible con entornos serverless
                     try:
-                        id_auth_part = int(user_id_part)
-                        print(f"🔢 Buscando id_autentificar que contenga: {id_auth_part}")
-                        for user in user_response.data:
-                            # Convertir id_autentificar a string para poder buscar el patrón
-                            id_auth_str = str(user.get('id_autentificar', ''))
-                            print(f"👤 Usuario ID: {user.get('id_usuario')}, id_autentificar: {id_auth_str}")
-                            if user_id_part in id_auth_str:
-                                matching_users.append(user)
-                    except ValueError:
-                        print(f"⚠️ No se pudo convertir {user_id_part} a entero")
+                        users_response = supabase.table('usuario').select('*').execute()
+                        users = users_response.data
+                    except Exception as fetch_error:
+                        print(f"❌ Error al obtener usuarios: {fetch_error}")
+                        raise Exception(f"Error al obtener usuarios: {fetch_error}")
                     
-                    if matching_users:
-                        # Tomar el primer usuario que coincida
-                        user = matching_users[0]
-                        user_id = user['id_usuario']
-                        current_premium = user['id_premium']
+                    print(f"📊 Total usuarios encontrados: {len(users)}")
+                    
+                    # Buscar manualmente el usuario que coincida
+                    matching_user = None
+                    for user in users:
+                        auth_id = user.get('id_autentificar')
+                        user_id = user.get('id_usuario')
+                        print(f"👤 Verificando usuario ID {user_id}, auth ID: {auth_id}")
+                        
+                        # Convertir a string para buscar coincidencia
+                        if auth_id is not None and user_id_part in str(auth_id):
+                            matching_user = user
+                            break
+                    
+                    if matching_user:
+                        user_id = matching_user['id_usuario']
+                        current_premium = matching_user['id_premium']
                         
                         print(f"👤 Usuario encontrado: ID {user_id}, Premium actual: {current_premium}")
                         
                         # La ID Premium 2 parece ser la de usuario premium según tu estructura
                         if current_premium != 2:
                             # Actualizar a premium
-                            update_response = supabase.table('usuario').update({
-                                'id_premium': 2
-                            }).eq('id_usuario', user_id).execute()
-                            
-                            if update_response.data:
-                                print(f"✅ Usuario actualizado a Premium exitosamente!")
+                            try:
+                                update_response = supabase.table('usuario').update({
+                                    'id_premium': 2
+                                }).eq('id_usuario', user_id).execute()
                                 
-                                # Registrar la transacción en una tabla de pagos (opcional)
-                                try:
-                                    payment_record = {
-                                        'id_usuario': user_id,
-                                        'buy_order': buy_order,
-                                        'amount': amount,
-                                        'authorization_code': transaction_result.get('authorization_code'),
-                                        'transaction_date': transaction_result.get('transaction_date'),
-                                        'payment_type': 'webpay_premium_upgrade',
-                                        'status': 'completed'
-                                    }
-                                    # Nota: Necesitarías crear una tabla 'pagos' en Supabase para esto
-                                    print(f"💳 Registro de pago: {payment_record}")
-                                except Exception as payment_log_error:
-                                    print(f"⚠️ No se pudo registrar el pago (no crítico): {payment_log_error}")
-                            else:
-                                print(f"❌ Error al actualizar usuario a premium")
-                                raise Exception("Error al actualizar usuario")
+                                if update_response.data:
+                                    print(f"✅ Usuario actualizado a Premium exitosamente!")
+                                else:
+                                    print(f"❌ Error al actualizar usuario a premium")
+                                    raise Exception("Error al actualizar usuario - respuesta vacía")
+                            except Exception as update_error:
+                                print(f"❌ Error en la operación de actualización: {update_error}")
+                                raise Exception(f"Error en la operación de actualización: {update_error}")
                         else:
                             print(f"ℹ️ Usuario ya era premium")
                     else:
                         print(f"❌ No se encontró usuario con id_autentificar que contenga: {user_id_part}")
-                        raise Exception("Usuario no encontrado")
+                        raise Exception(f"Usuario no encontrado con id_autentificar que contenga: {user_id_part}")
                 except Exception as query_error:
                     print(f"❌ Error al consultar la base de datos: {query_error}")
                     raise Exception(f"Error al consultar la base de datos: {query_error}")
@@ -662,10 +680,11 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                             Autorización: {transaction_result.get('authorization_code', 'N/A')}
                         </div>
                         <div class="message">
-                            Por favor, contacta a soporte con estos datos para activar tu cuenta Premium.
+                            Por favor, utiliza el siguiente enlace para activar manualmente tu cuenta Premium.
                         </div>
                         <div class="button-group">
-                            <a href="cowtracker://premium/manual?order={buy_order}" class="button">🏠 Volver a CowTracker App</a>
+                            <a href="https://ct-fastapi.vercel.app/activate-premium/{buy_order}" class="button">🚀 Activar Premium</a>
+                            <a href="cowtracker://premium/manual?order={buy_order}" class="secondary-button">🏠 Volver a CowTracker App</a>
                             <a href="https://cowtracker.app/premium/manual?order={buy_order}" class="secondary-button">🌐 Abrir CowTracker en Web</a>
                         </div>
                     </div>
@@ -859,100 +878,160 @@ async def get_transaction_by_order(buy_order: str):
     return transaction
 
 @app.post("/activate-premium/{buy_order}")
+@app.get("/activate-premium/{buy_order}")  # Añadir soporte para GET para facilitar el uso desde navegadores
 async def activate_premium_manually(buy_order: str):
     """
     Activar manualmente una cuenta premium usando el buy_order
     Útil cuando el proceso automático falló pero el pago fue exitoso
     """
     if not buy_order or not buy_order.startswith("prem_"):
-        raise HTTPException(status_code=400, detail="Orden de compra inválida. Debe comenzar con 'prem_'")
+        error_msg = "Orden de compra inválida. Debe comenzar con 'prem_'"
+        return HTMLResponse(content=f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Error de Activación - CowTracker Premium</title>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <style>
+                    body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f8f9fa; }}
+                    .container {{ max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+                    .error {{ color: #e74c3c; font-size: 24px; margin-bottom: 20px; }}
+                    .message {{ color: #666; margin-bottom: 30px; }}
+                    .button {{ background: #3498db; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="error">❌ Error de Activación</div>
+                    <div class="message">
+                        {error_msg}
+                    </div>
+                    <a href="https://cowtracker.app" class="button">Volver a CowTracker</a>
+                </div>
+            </body>
+            </html>
+        """, status_code=400)
+    
+    result_message = ""
+    status_code = 200
+    success = False
     
     try:
         # Extraer el user_id_part desde el buy_order
         parts = buy_order.split('_')
         if len(parts) < 2:
-            raise HTTPException(status_code=400, detail="Formato de orden de compra inválido")
-        
-        user_id_part = parts[1]
-        
-        # Inicializar Supabase
-        from supabase import create_client, Client
-        import time
-        
-        supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_ANON_KEY")
-        
-        if not supabase_url or not supabase_key:
-            raise HTTPException(status_code=500, detail="Credenciales de Supabase no configuradas")
-        
-        # Conectar a Supabase con reintentos
-        max_retries = 3
-        retry_count = 0
-        
-        while retry_count < max_retries:
-            try:
-                print(f"🔌 Conectando a Supabase URL: {supabase_url} (intento {retry_count + 1})")
-                supabase: Client = create_client(supabase_url, supabase_key)
-                break
-            except Exception as e:
-                print(f"⚠️ Error de conexión: {e}")
-                retry_count += 1
-                if retry_count < max_retries:
-                    print(f"🔄 Esperando 2 segundos antes de reintentar... (intento {retry_count + 1})")
-                    time.sleep(2)
-                    continue
-                else:
-                    raise HTTPException(status_code=500, detail=f"No se pudo conectar a Supabase después de {max_retries} intentos")
-        
-        # Buscar todos los usuarios
-        user_response = supabase.table('usuario').select('*').execute()
-        
-        # Buscar usuario por coincidencia en id_autentificar
-        matching_users = []
-        try:
-            for user in user_response.data:
-                id_auth_str = str(user.get('id_autentificar', ''))
-                if user_id_part in id_auth_str:
-                    matching_users.append(user)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error al buscar usuarios: {str(e)}")
-        
-        if not matching_users:
-            raise HTTPException(status_code=404, detail=f"No se encontró usuario con id_autentificar que contenga: {user_id_part}")
-        
-        # Tomar el primer usuario que coincida
-        user = matching_users[0]
-        user_id = user['id_usuario']
-        current_premium = user['id_premium']
-        
-        # Si ya es premium, informar
-        if current_premium == 2:
-            return {
-                "success": True,
-                "message": "El usuario ya tiene estado Premium",
-                "user_id": user_id,
-                "buy_order": buy_order
-            }
-        
-        # Actualizar a premium
-        update_response = supabase.table('usuario').update({
-            'id_premium': 2
-        }).eq('id_usuario', user_id).execute()
-        
-        if not update_response.data:
-            raise HTTPException(status_code=500, detail="Error al actualizar usuario a premium")
-        
-        return {
-            "success": True,
-            "message": "Usuario actualizado a Premium exitosamente",
-            "user_id": user_id,
-            "buy_order": buy_order
-        }
-    
-    except HTTPException:
-        raise
+            result_message = "Formato de orden de compra inválido"
+            status_code = 400
+        else:
+            user_id_part = parts[1]
+            print(f"🔍 Buscando usuario con id_autentificar que contenga: {user_id_part}")
+            
+            # Inicializar Supabase directamente sin reintentos para ser compatible con Vercel
+            from supabase import create_client, Client
+            
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_ANON_KEY")
+            
+            if not supabase_url or not supabase_key:
+                result_message = "Credenciales de Supabase no configuradas"
+                status_code = 500
+            else:
+                try:
+                    print(f"🔌 Conectando a Supabase URL: {supabase_url}")
+                    supabase: Client = create_client(supabase_url, supabase_key)
+                    
+                    # Intentar obtener todos los usuarios
+                    users_response = supabase.table('usuario').select('*').execute()
+                    users = users_response.data
+                    print(f"📊 Total usuarios encontrados: {len(users)}")
+                    
+                    # Buscar manualmente el usuario que coincida
+                    matching_user = None
+                    for user in users:
+                        auth_id = user.get('id_autentificar')
+                        user_id = user.get('id_usuario')
+                        print(f"👤 Verificando usuario ID {user_id}, auth ID: {auth_id}")
+                        
+                        # Convertir a string para buscar coincidencia
+                        if auth_id is not None and user_id_part in str(auth_id):
+                            matching_user = user
+                            break
+                    
+                    if matching_user:
+                        user_id = matching_user['id_usuario']
+                        current_premium = matching_user['id_premium']
+                        
+                        print(f"👤 Usuario encontrado: ID {user_id}, Premium actual: {current_premium}")
+                        
+                        # Si ya es premium, informar
+                        if current_premium == 2:
+                            result_message = "¡Tu cuenta ya tiene estado Premium! No es necesario activarla nuevamente."
+                            success = True
+                        else:
+                            # Actualizar a premium
+                            update_response = supabase.table('usuario').update({
+                                'id_premium': 2
+                            }).eq('id_usuario', user_id).execute()
+                            
+                            if update_response.data:
+                                print(f"✅ Usuario actualizado a Premium exitosamente!")
+                                result_message = "¡Tu cuenta ha sido actualizada a Premium exitosamente!"
+                                success = True
+                            else:
+                                result_message = "Error al actualizar tu cuenta a Premium. Por favor, contacta a soporte."
+                                status_code = 500
+                    else:
+                        result_message = f"No se encontró usuario asociado a este código. Por favor, contacta a soporte."
+                        status_code = 404
+                except Exception as e:
+                    print(f"❌ Error durante el proceso de activación: {e}")
+                    result_message = f"Error durante el proceso de activación: {str(e)}"
+                    status_code = 500
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al activar premium: {str(e)}")
+        print(f"❌ Error general en activate_premium_manually: {e}")
+        result_message = f"Error inesperado: {str(e)}"
+        status_code = 500
+    
+    # Devolver una respuesta HTML amigable para el usuario
+    emoji = "✅" if success else "❌"
+    color = "#27ae60" if success else "#e74c3c"
+    return HTMLResponse(content=f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Activación de Premium - CowTracker</title>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f8f9fa; }}
+                .container {{ max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+                .result {{ color: {color}; font-size: 24px; margin-bottom: 20px; }}
+                .message {{ color: #666; margin-bottom: 30px; }}
+                .button {{ background: #3498db; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin-right: 10px; }}
+                .success-button {{ background: #27ae60; }}
+                .button-group {{ margin-top: 20px; }}
+                .details {{ background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0; text-align: left; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="result">{emoji} {("¡Éxito!" if success else "Error")}</div>
+                <div class="message">
+                    {result_message}
+                </div>
+                <div class="details">
+                    <strong>Detalles de la orden:</strong><br>
+                    Orden: {buy_order}
+                </div>
+                <div class="button-group">
+                    {"<a href='cowtracker://premium/success' class='button success-button'>Abrir CowTracker App</a>" if success else ""}
+                    <a href="https://cowtracker.app" class="button">Ir a CowTracker Web</a>
+                </div>
+            </div>
+        </body>
+        </html>
+    """, status_code=status_code)
 
 # Para desarrollo local
 if __name__ == "__main__":
