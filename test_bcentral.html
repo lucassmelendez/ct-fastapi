@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Banco Central API</title>    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px; 
+            background-color: #f5f5f5; 
+        }
+        .container { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
+            margin-bottom: 20px; 
+        }
+        h1, h2 { color: #333; }
+        button { 
+            background-color: #007bff; 
+            color: white; 
+            border: none; 
+            padding: 10px 20px; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            margin: 5px; 
+        }
+        button:hover { background-color: #0056b3; }
+        .result { 
+            background-color: #f8f9fa; 
+            border: 1px solid #dee2e6; 
+            border-radius: 4px; 
+            padding: 15px; 
+            margin-top: 10px; 
+            white-space: pre-wrap; 
+            font-family: monospace; 
+        }
+        .input-group { 
+            margin: 10px 0; 
+        }
+        label { 
+            display: block; 
+            margin-bottom: 5px; 
+            font-weight: bold; 
+        }
+        input { 
+            width: 200px; 
+            padding: 8px; 
+            border: 1px solid #ddd; 
+            border-radius: 4px; 
+        }
+        .success { border-left: 4px solid #28a745; }
+        .error { border-left: 4px solid #dc3545; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏦 Test API Banco Central de Chile</h1>
+        <p>Prueba las diferentes funcionalidades de la API del Banco Central integrada en CowTracker.</p>
+    </div>
+
+    <div class="container">
+        <h2>📈 Tipo de Cambio USD/CLP</h2>
+        <div class="input-group">
+            <label for="usd-start">Fecha Inicio (YYYY-MM-DD):</label>
+            <input type="date" id="usd-start" value="2024-01-01">
+        </div>
+        <div class="input-group">
+            <label for="usd-end">Fecha Fin (YYYY-MM-DD):</label>
+            <input type="date" id="usd-end" value="2024-01-31">
+        </div>
+        <button onclick="getExchangeRate()">Obtener Tipo de Cambio</button>
+        <div id="usd-result" class="result" style="display:none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>🏠 Valor UF (Unidad de Fomento)</h2>
+        <div class="input-group">
+            <label for="uf-start">Fecha Inicio:</label>
+            <input type="date" id="uf-start" value="2024-01-01">
+        </div>
+        <div class="input-group">
+            <label for="uf-end">Fecha Fin:</label>
+            <input type="date" id="uf-end" value="2024-01-31">
+        </div>
+        <button onclick="getUFValue()">Obtener Valor UF</button>
+        <div id="uf-result" class="result" style="display:none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>📋 Valor UTM (Unidad Tributaria Mensual)</h2>
+        <div class="input-group">
+            <label for="utm-start">Fecha Inicio:</label>
+            <input type="date" id="utm-start" value="2024-01-01">
+        </div>
+        <div class="input-group">
+            <label for="utm-end">Fecha Fin:</label>
+            <input type="date" id="utm-end" value="2024-01-31">
+        </div>
+        <button onclick="getUTMValue()">Obtener Valor UTM</button>
+        <div id="utm-result" class="result" style="display:none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>📊 Indicadores Económicos del Día</h2>
+        <div class="input-group">
+            <label for="indicators-date">Fecha:</label>
+            <input type="date" id="indicators-date" value="2024-01-15">
+        </div>
+        <button onclick="getEconomicIndicators()">Obtener Indicadores</button>
+        <div id="indicators-result" class="result" style="display:none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>📋 Series Disponibles</h2>
+        <button onclick="getAvailableSeries()">Ver Series Disponibles</button>
+        <div id="series-result" class="result" style="display:none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>🔧 Serie Personalizada</h2>
+        <div class="input-group">
+            <label for="custom-series">Código de Serie:</label>
+            <input type="text" id="custom-series" placeholder="Ej: F073.TCO.PRE.Z.D" value="F073.TCO.PRE.Z.D">
+        </div>
+        <div class="input-group">
+            <label for="custom-start">Fecha Inicio:</label>
+            <input type="date" id="custom-start" value="2024-01-01">
+        </div>
+        <div class="input-group">
+            <label for="custom-end">Fecha Fin:</label>
+            <input type="date" id="custom-end" value="2024-01-31">
+        </div>
+        <button onclick="getCustomSeries()">Obtener Serie</button>
+        <div id="custom-result" class="result" style="display:none;"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+
+        async function makeRequest(url, resultId) {
+            const resultDiv = document.getElementById(resultId);
+            resultDiv.style.display = 'block';
+            resultDiv.textContent = 'Cargando...';
+            resultDiv.className = 'result';
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.textContent = JSON.stringify(data, null, 2);
+                    resultDiv.className = 'result success';
+                } else {
+                    resultDiv.textContent = `Error: ${data.detail || 'Error desconocido'}`;
+                    resultDiv.className = 'result error';
+                }
+            } catch (error) {
+                resultDiv.textContent = `Error de conexión: ${error.message}`;
+                resultDiv.className = 'result error';
+            }
+        }
+
+        function getExchangeRate() {
+            const startDate = document.getElementById('usd-start').value;
+            const endDate = document.getElementById('usd-end').value;
+            const url = `${API_BASE}/bcentral/exchange-rate?start_date=${startDate}&end_date=${endDate}`;
+            makeRequest(url, 'usd-result');
+        }
+
+        function getUFValue() {
+            const startDate = document.getElementById('uf-start').value;
+            const endDate = document.getElementById('uf-end').value;
+            const url = `${API_BASE}/bcentral/uf?start_date=${startDate}&end_date=${endDate}`;
+            makeRequest(url, 'uf-result');
+        }
+
+        function getUTMValue() {
+            const startDate = document.getElementById('utm-start').value;
+            const endDate = document.getElementById('utm-end').value;
+            const url = `${API_BASE}/bcentral/utm?start_date=${startDate}&end_date=${endDate}`;
+            makeRequest(url, 'utm-result');
+        }
+
+        function getEconomicIndicators() {
+            const date = document.getElementById('indicators-date').value;
+            const url = `${API_BASE}/bcentral/economic-indicators?date=${date}`;
+            makeRequest(url, 'indicators-result');
+        }
+
+        function getAvailableSeries() {
+            const url = `${API_BASE}/bcentral/series`;
+            makeRequest(url, 'series-result');
+        }
+
+        function getCustomSeries() {
+            const seriesCode = document.getElementById('custom-series').value;
+            const startDate = document.getElementById('custom-start').value;
+            const endDate = document.getElementById('custom-end').value;
+            const url = `${API_BASE}/bcentral/series/${seriesCode}?start_date=${startDate}&end_date=${endDate}`;
+            makeRequest(url, 'custom-result');
+        }
+
+        // Establecer fecha actual por defecto
+        document.addEventListener('DOMContentLoaded', function() {
+            const today = new Date().toISOString().split('T')[0];
+            const dateInputs = document.querySelectorAll('input[type="date"]');
+            dateInputs.forEach(input => {
+                if (input.value === '') {
+                    input.value = today;
+                }
+            });
+        });
+    </script>
+</body>
+</html>
