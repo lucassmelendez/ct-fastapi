@@ -4,6 +4,23 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel
 from typing import List, Optional
 import uvicorn
+import os
+
+# Configurar variables de entorno para Supabase
+try:
+    import setup_env
+    print("✅ Variables de entorno cargadas desde setup_env.py")
+except ImportError:
+    print("⚠️ No se pudo cargar setup_env.py, usando variables de entorno del sistema")
+    
+# Verificar si las credenciales de Supabase están configuradas
+supabase_url = os.environ.get('SUPABASE_URL')
+supabase_key = os.environ.get('SUPABASE_ANON_KEY')
+if supabase_url and supabase_key:
+    print(f"✅ Credenciales de Supabase configuradas: {supabase_url}")
+else:
+    print("❌ ADVERTENCIA: Credenciales de Supabase no configuradas")
+
 from webpay_service import WebpayService
 from config import AppConfig, WebpayConfig
 
@@ -57,7 +74,7 @@ async def options_create_transaction():
             "Access-Control-Allow-Headers": "Content-Type, Authorization, Origin, Accept",
             "Access-Control-Allow-Credentials": "true"
         }
-    )
+)
 
 # Inicializar servicio de Webpay (usará la configuración de variables de entorno)
 try:
@@ -349,7 +366,7 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
             print("❌ Transacción cancelada o con error")
             return HTMLResponse(content="""
                 <!DOCTYPE html>
-                <html>
+        <html>
                 <head>
                     <title>Pago Cancelado - CowTracker</title>
                     <meta charset="utf-8">
@@ -361,7 +378,7 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                         .button { background: #3498db; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; }
                     </style>
                 </head>
-                <body>
+            <body>
                     <div class="container">
                         <div class="error">❌ Pago Cancelado</div>
                         <div class="message">
@@ -370,16 +387,16 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                         </div>
                         <a href="#" onclick="window.close()" class="button">Cerrar Ventana</a>
                     </div>
-                </body>
-                </html>
-            """)
-        
+            </body>
+        </html>
+        """)
+    
         # Si no hay token_ws, es un error
         if not token_ws:
             print("❌ No se recibió token de transacción")
             return HTMLResponse(content="""
                 <!DOCTYPE html>
-                <html>
+            <html>
                 <head>
                     <title>Error - CowTracker</title>
                     <meta charset="utf-8">
@@ -401,7 +418,7 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                         <a href="#" onclick="window.close()" class="button">Cerrar Ventana</a>
                     </div>
                 </body>
-                </html>
+            </html>
             """)
         
         # Confirmar la transacción con Webpay
@@ -445,7 +462,7 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
             print(f"❌ Pago rechazado. Código de respuesta: {response_code}")
             return HTMLResponse(content=f"""
                 <!DOCTYPE html>
-                <html>
+            <html>
                 <head>
                     <title>Pago Rechazado - CowTracker</title>
                     <meta charset="utf-8">
@@ -467,7 +484,7 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                         <a href="#" onclick="window.close()" class="button">Cerrar Ventana</a>
                     </div>
                 </body>
-                </html>
+            </html>
             """)
         
         # ✅ Pago exitoso - Actualizar usuario a premium
@@ -488,7 +505,6 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                 
                 # Buscar el usuario en Supabase que tenga un UID que termine con esta parte
                 from supabase import create_client, Client
-                import os
                 
                 supabase_url = os.getenv("SUPABASE_URL")
                 supabase_key = os.getenv("SUPABASE_ANON_KEY")
@@ -538,7 +554,7 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                             raise Exception("Error al actualizar usuario")
                     else:
                         print(f"ℹ️ Usuario ya era premium")
-                else:
+        else:
                     print(f"❌ No se encontró usuario con UID que termine en: {user_id_part}")
                     raise Exception("Usuario no encontrado")
                     
@@ -551,13 +567,20 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                 <head>
                     <title>Pago Procesado - CowTracker</title>
                     <meta charset="utf-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
                     <style>
                         body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f8f9fa; }}
                         .container {{ max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
                         .warning {{ color: #f39c12; font-size: 24px; margin-bottom: 20px; }}
                         .message {{ color: #666; margin-bottom: 30px; }}
                         .details {{ background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0; text-align: left; }}
-                        .button {{ background: #27ae60; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; }}
+                        .button {{ background: #27ae60; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin-bottom: 10px; }}
+                        .secondary-button {{ background: #3498db; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; }}
+                        .button-group {{ display: flex; flex-direction: column; gap: 15px; }}
+                        @media (max-width: 600px) {{ 
+                            body {{ padding: 20px; }}
+                            .container {{ padding: 25px; }}
+                        }}
                     </style>
                 </head>
                 <body>
@@ -575,8 +598,22 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                         <div class="message">
                             Por favor, contacta a soporte con estos datos para activar tu cuenta Premium.
                         </div>
-                        <a href="#" onclick="window.close()" class="button">Cerrar Ventana</a>
+                        <div class="button-group">
+                            <a href="cowtracker://premium/manual?order={buy_order}" class="button">🏠 Volver a CowTracker App</a>
+                            <a href="https://cowtracker.app/premium/manual?order={buy_order}" class="secondary-button">🌐 Abrir CowTracker en Web</a>
+                        </div>
                     </div>
+                    <script>
+                        // Intento de redirección automática a la app después de 3 segundos
+                        setTimeout(function() {{
+                            try {{
+                                // Intentar abrir la app
+                                window.location.href = "cowtracker://premium/manual?order={buy_order}";
+                            }} catch (e) {{
+                                console.error("Error en redirección:", e);
+                            }}
+                        }}, 3000);
+                    </script>
                 </body>
                 </html>
             """)
@@ -588,6 +625,7 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
             <head>
                 <title>¡Pago Exitoso! - CowTracker Premium</title>
                 <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <style>
                     body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background: linear-gradient(135deg, #27ae60, #2ecc71); }}
                     .container {{ max-width: 500px; margin: 0 auto; background: white; padding: 40px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }}
@@ -598,6 +636,13 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                     .premium-badge {{ background: linear-gradient(45deg, #f39c12, #e67e22); color: white; padding: 10px 20px; border-radius: 25px; display: inline-block; margin: 20px 0; font-weight: bold; }}
                     .button {{ background: #27ae60; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold; margin-top: 20px; }}
                     .button:hover {{ background: #229954; }}
+                    .button-group {{ display: flex; flex-direction: column; gap: 15px; }}
+                    .secondary-button {{ background: #3498db; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold; }}
+                    .secondary-button:hover {{ background: #2980b9; }}
+                    @media (max-width: 600px) {{ 
+                        body {{ padding: 20px; }}
+                        .container {{ padding: 25px; }}
+                    }}
                 </style>
             </head>
             <body>
@@ -624,23 +669,39 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                         • Soporte prioritario 24/7<br>
                         • Sincronización en la nube
                     </div>
-                    <a href="#" onclick="window.close()" class="button">🏠 Volver a CowTracker</a>
+                    <div class="button-group">
+                        <a href="cowtracker://premium/success?order={buy_order}" class="button">🏠 Volver a CowTracker App</a>
+                        <a href="https://cowtracker.app/premium/success?order={buy_order}" class="secondary-button">🌐 Abrir CowTracker en Web</a>
+                    </div>
                 </div>
                 <script>
-                    // Auto-cerrar después de 10 segundos
+                    // Intento de redirección automática a la app después de 3 segundos
                     setTimeout(function() {{
-                        window.close();
-                    }}, 10000);
+                        try {{
+                            // Intentar abrir la app
+                            window.location.href = "cowtracker://premium/success?order={buy_order}";
+                            
+                            // Después de 1 segundo, verificar si seguimos en esta página
+                            setTimeout(function() {{
+                                // Si seguimos en esta página, probablemente la app no está instalada
+                                if (document.hasFocus()) {{
+                                    console.log("La app no está instalada, fallback a web");
+                                }}
+                            }}, 1000);
+                        }} catch (e) {{
+                            console.error("Error en redirección:", e);
+                        }}
+                    }}, 3000);
                 </script>
             </body>
             </html>
         """)
-        
+    
     except Exception as e:
         print(f"❌ Error en webpay_return: {str(e)}")
         return HTMLResponse(content=f"""
             <!DOCTYPE html>
-            <html>
+        <html>
             <head>
                 <title>Error del Sistema - CowTracker</title>
                 <meta charset="utf-8">
@@ -665,7 +726,7 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                     <a href="#" onclick="window.close()" class="button">Cerrar Ventana</a>
                 </div>
             </body>
-            </html>
+        </html>
         """)
 
 @app.get("/webpay/status/{token}")
