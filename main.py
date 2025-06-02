@@ -490,198 +490,20 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
             </html>
             """)
         
-        # ✅ Pago exitoso - Actualizar usuario a premium
+        # ✅ Pago exitoso - Redirigir a la app para que maneje la actualización
         buy_order = transaction_result.get('buy_order', '')
         amount = transaction_result.get('amount', 0)
+        authorization_code = transaction_result.get('authorization_code', '')
         
         print(f"✅ Pago exitoso!")
         print(f"   - Buy Order: {buy_order}")
         print(f"   - Monto: {amount}")
-        print(f"   - Código de autorización: {transaction_result.get('authorization_code')}")
+        print(f"   - Código de autorización: {authorization_code}")
         
-        # Extraer el UID del usuario desde el buy_order
-        # Formato: prem_d2374057_27468312 -> extraer d2374057
-        try:
-            user_id_part = buy_order.split('_')[1] if '_' in buy_order else None
-            if user_id_part:
-                print(f"🔍 Buscando usuario con UID que termine en: {user_id_part}")
-                
-                # Usar requests en lugar de httpx para mejor compatibilidad
-                import requests
-                import json
-                
-                supabase_url = os.getenv("SUPABASE_URL")
-                supabase_key = os.getenv("SUPABASE_ANON_KEY")
-                
-                if not supabase_url or not supabase_key:
-                    raise Exception("Credenciales de Supabase no configuradas")
-                
-                print(f"🔌 Conectando a Supabase URL: {supabase_url}")
-                
-                try:
-                    # Configurar headers para la petición
-                    headers = {
-                        "apikey": supabase_key,
-                        "Authorization": f"Bearer {supabase_key}",
-                        "Content-Type": "application/json",
-                        "Prefer": "return=minimal"
-                    }
-                    
-                    # Configurar timeout y session
-                    session = requests.Session()
-                    session.headers.update(headers)
-                    
-                    # Buscar usuario directamente por id_autentificar
-                    print(f"🔍 Buscando usuario con id_autentificar que contenga: {user_id_part}")
-                    
-                    # Intentar búsqueda con filtro like
-                    search_url = f"{supabase_url}/rest/v1/usuario"
-                    params = {"id_autentificar": f"like.*{user_id_part}*"}
-                    
-                    response = session.get(search_url, params=params, timeout=15)
-                    
-                    if response.status_code != 200:
-                        print(f"❌ Error en búsqueda: {response.status_code} - {response.text}")
-                        raise Exception(f"Error en búsqueda: {response.status_code}")
-                    
-                    users = response.json()
-                    print(f"📊 Usuarios encontrados en búsqueda directa: {len(users)}")
-                    
-                    # Si no encuentra usuarios, intentar obtener todos
-                    if not users:
-                        print("⚠️ No se encontró por búsqueda directa, obteniendo todos los usuarios...")
-                        response = session.get(search_url, timeout=15)
-                        
-                        if response.status_code != 200:
-                            raise Exception(f"Error al obtener usuarios: {response.status_code}")
-                        
-                        all_users = response.json()
-                        print(f"📊 Total usuarios en base de datos: {len(all_users)}")
-                        
-                        # Filtrar manualmente
-                        users = [user for user in all_users if user_id_part in str(user.get('id_autentificar', ''))]
-                        print(f"📊 Usuarios que coinciden: {len(users)}")
-                    
-                    # Buscar el usuario que coincida exactamente
-                    matching_user = None
-                    for user in users:
-                        auth_id = str(user.get('id_autentificar', ''))
-                        if user_id_part in auth_id:
-                            matching_user = user
-                            print(f"✅ Usuario encontrado: {auth_id}")
-                            break
-                    
-                    if matching_user:
-                        user_id = matching_user['id_usuario']
-                        current_premium = matching_user.get('id_premium')
-                        
-                        print(f"👤 Usuario encontrado: ID {user_id}, Premium actual: {current_premium}")
-                        
-                        # Actualizar a premium si no lo es ya
-                        if current_premium != 2:
-                            print("🔄 Actualizando usuario a Premium...")
-                            
-                            # Actualizar usando PATCH
-                            update_url = f"{supabase_url}/rest/v1/usuario"
-                            update_params = {"id_usuario": f"eq.{user_id}"}
-                            update_data = {"id_premium": 2}
-                            
-                            update_response = session.patch(
-                                update_url,
-                                params=update_params,
-                                json=update_data,
-                                timeout=15
-                            )
-                            
-                            print(f"📤 Respuesta de actualización: {update_response.status_code}")
-                            
-                            if update_response.status_code in [200, 204]:
-                                print("✅ Usuario actualizado a Premium exitosamente!")
-                            else:
-                                print(f"❌ Error en actualización: {update_response.status_code} - {update_response.text}")
-                                raise Exception(f"Error al actualizar usuario: {update_response.status_code}")
-                        else:
-                            print("ℹ️ Usuario ya era premium")
-                    else:
-                        print("❌ No se encontró el usuario")
-                        raise Exception("Usuario no encontrado")
-                        
-                except requests.exceptions.RequestException as req_error:
-                    print(f"❌ Error de conexión: {req_error}")
-                    raise Exception(f"Error de conexión: {req_error}")
-                except Exception as api_error:
-                    print(f"❌ Error en API: {api_error}")
-                    raise Exception(f"Error en API: {api_error}")
-                finally:
-                    # Cerrar la sesión
-                    if 'session' in locals():
-                        session.close()
-            else:
-                print("❌ No se pudo extraer ID de usuario del buy_order")
-                raise Exception("Formato de buy_order inválido")
-                    
-        except Exception as user_update_error:
-            print(f"❌ Error al actualizar usuario: {user_update_error}")
-            # Aún mostrar éxito del pago, pero indicar que debe contactar soporte
-            return HTMLResponse(content=f"""
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Pago Procesado - CowTracker</title>
-                    <meta charset="utf-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <style>
-                        body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f8f9fa; }}
-                        .container {{ max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
-                        .warning {{ color: #f39c12; font-size: 24px; margin-bottom: 20px; }}
-                        .message {{ color: #666; margin-bottom: 30px; }}
-                        .details {{ background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0; text-align: left; }}
-                        .button {{ background: #27ae60; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin-bottom: 10px; }}
-                        .secondary-button {{ background: #3498db; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; }}
-                        .button-group {{ display: flex; flex-direction: column; gap: 15px; }}
-                        @media (max-width: 600px) {{ 
-                            body {{ padding: 20px; }}
-                            .container {{ padding: 25px; }}
-                        }}
-                    </style>
-                </head>
-                <body>
-                    <div class="container">
-                        <div class="warning">⚠️ Pago Procesado</div>
-                        <div class="message">
-                            Tu pago fue procesado exitosamente, pero hubo un problema al activar tu cuenta Premium automáticamente.
-                        </div>
-                        <div class="details">
-                            <strong>Detalles del pago:</strong><br>
-                            Orden: {buy_order}<br>
-                            Monto: ${amount:,}<br>
-                            Autorización: {transaction_result.get('authorization_code', 'N/A')}
-                        </div>
-                        <div class="message">
-                            Por favor, utiliza el siguiente enlace para activar manualmente tu cuenta Premium.
-                        </div>
-                        <div class="button-group">
-                            <a href="https://ct-fastapi.vercel.app/activate-premium/{buy_order}" class="button">🚀 Activar Premium</a>
-                            <a href="cowtracker://premium/manual?order={buy_order}" class="secondary-button">🏠 Volver a CowTracker App</a>
-                            <a href="https://cowtracker.app/premium/manual?order={buy_order}" class="secondary-button">🌐 Abrir CowTracker en Web</a>
-                        </div>
-                    </div>
-                    <script>
-                        // Intento de redirección automática a la app después de 3 segundos
-                        setTimeout(function() {{
-                            try {{
-                                // Intentar abrir la app
-                                window.location.href = "cowtracker://premium/manual?order={buy_order}";
-                            }} catch (e) {{
-                                console.error("Error en redirección:", e);
-                            }}
-                        }}, 3000);
-                    </script>
-                </body>
-                </html>
-            """)
+        # En lugar de actualizar Supabase aquí, redirigir a la app con la información del pago
+        # La app se encargará de actualizar el usuario usando su propio backend
         
-        # ✅ Todo exitoso
+        # ✅ Todo exitoso - Redirigir a la app para que maneje la actualización
         return HTMLResponse(content=f"""
             <!DOCTYPE html>
             <html>
@@ -702,6 +524,8 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                     .button-group {{ display: flex; flex-direction: column; gap: 15px; }}
                     .secondary-button {{ background: #3498db; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold; }}
                     .secondary-button:hover {{ background: #2980b9; }}
+                    .loading {{ display: none; margin-top: 20px; }}
+                    .loading.show {{ display: block; }}
                     @media (max-width: 600px) {{ 
                         body {{ padding: 20px; }}
                         .container {{ padding: 25px; }}
@@ -711,50 +535,59 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
             <body>
                 <div class="container">
                     <div class="success">🎉</div>
-                    <div class="title">¡Bienvenido a CowTracker Premium!</div>
-                    <div class="premium-badge">✨ CUENTA PREMIUM ACTIVADA ✨</div>
+                    <div class="title">¡Pago Procesado Exitosamente!</div>
+                    <div class="premium-badge">✨ ACTIVANDO PREMIUM ✨</div>
                     <div class="message">
-                        Tu pago ha sido procesado exitosamente y tu cuenta ha sido actualizada a Premium. 
-                        ¡Ya puedes disfrutar de todas las funcionalidades avanzadas!
+                        Tu pago ha sido procesado exitosamente. Serás redirigido a CowTracker para activar tu cuenta Premium.
                     </div>
                     <div class="details">
                         <strong>📋 Detalles del pago:</strong><br><br>
                         🆔 Orden: {buy_order}<br>
                         💰 Monto: ${amount:,} CLP<br>
-                        🔐 Autorización: {transaction_result.get('authorization_code', 'N/A')}<br>
+                        🔐 Autorización: {authorization_code}<br>
                         📅 Fecha: {transaction_result.get('transaction_date', 'N/A')}
                     </div>
-                    <div class="message">
-                        <strong>🚀 Funcionalidades Premium activadas:</strong><br>
-                        • Registro ilimitado de ganado<br>
-                        • Reportes avanzados y estadísticas<br>
-                        • Exportación de datos<br>
-                        • Soporte prioritario 24/7<br>
-                        • Sincronización en la nube
+                    <div class="loading" id="loading">
+                        <div style="color: #27ae60; font-size: 18px;">
+                            🔄 Redirigiendo a CowTracker...
+                        </div>
                     </div>
-                    <div class="button-group">
-                        <a href="cowtracker://premium/success?order={buy_order}" class="button">🏠 Volver a CowTracker App</a>
-                        <a href="https://cowtracker.app/premium/success?order={buy_order}" class="secondary-button">🌐 Abrir CowTracker en Web</a>
+                    <div class="button-group" id="buttons">
+                        <a href="cowtracker://premium/activate?order={buy_order}&amount={amount}&auth={authorization_code}" class="button" onclick="showLoading()">
+                            🏠 Abrir CowTracker App
+                        </a>
+                        <a href="https://cowtracker.app/premium/activate?order={buy_order}&amount={amount}&auth={authorization_code}" class="secondary-button">
+                            🌐 Abrir CowTracker en Web
+                        </a>
                     </div>
                 </div>
                 <script>
-                    // Intento de redirección automática a la app después de 3 segundos
+                    function showLoading() {{
+                        document.getElementById('loading').classList.add('show');
+                        document.getElementById('buttons').style.opacity = '0.5';
+                    }}
+                    
+                    // Intento de redirección automática a la app después de 2 segundos
                     setTimeout(function() {{
                         try {{
-                            // Intentar abrir la app
-                            window.location.href = "cowtracker://premium/success?order={buy_order}";
+                            showLoading();
+                            // Intentar abrir la app con los datos del pago
+                            window.location.href = "cowtracker://premium/activate?order={buy_order}&amount={amount}&auth={authorization_code}";
                             
-                            // Después de 1 segundo, verificar si seguimos en esta página
+                            // Después de 3 segundos, verificar si seguimos en esta página
                             setTimeout(function() {{
-                                // Si seguimos en esta página, probablemente la app no está instalada
                                 if (document.hasFocus()) {{
-                                    console.log("La app no está instalada, fallback a web");
+                                    console.log("La app no está instalada, manteniendo opciones web");
+                                    document.getElementById('loading').classList.remove('show');
+                                    document.getElementById('buttons').style.opacity = '1';
                                 }}
-                            }}, 1000);
+                            }}, 3000);
                         }} catch (e) {{
                             console.error("Error en redirección:", e);
+                            document.getElementById('loading').classList.remove('show');
+                            document.getElementById('buttons').style.opacity = '1';
                         }}
-                    }}, 3000);
+                    }}, 2000);
                 </script>
             </body>
             </html>
