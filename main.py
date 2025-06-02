@@ -513,7 +513,25 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                     print("❌ Credenciales de Supabase no configuradas")
                     raise Exception("Credenciales de Supabase no configuradas")
                 
-                supabase: Client = create_client(supabase_url, supabase_key)
+                # Inicializar el cliente Supabase con manejo de errores específico
+                try:
+                    # Para debugging, imprimir los parámetros de conexión
+                    print(f"🔌 Conectando a Supabase URL: {supabase_url}")
+                    supabase: Client = create_client(supabase_url, supabase_key)
+                except TypeError as e:
+                    if 'proxy' in str(e):
+                        print(f"⚠️ Error con el parámetro proxy: {e}")
+                        # Intento alternativo: limpiar variables de entorno de proxy
+                        for env_var in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']:
+                            if env_var in os.environ:
+                                print(f"Limpiando variable de entorno: {env_var}")
+                                del os.environ[env_var]
+                        
+                        # Intentar crear el cliente nuevamente
+                        print("🔄 Reintentando conexión sin proxy...")
+                        supabase: Client = create_client(supabase_url, supabase_key)
+                    else:
+                        raise
                 
                 # Buscar usuario cuyo id_autentificar termine con user_id_part
                 response = supabase.table('usuario').select('*').like('id_autentificar', f'%{user_id_part}').execute()

@@ -46,7 +46,7 @@ class WebpayConfig:
     @classmethod
     def get_return_url(cls) -> str:
         """Obtiene la URL de retorno"""
-        return os.getenv("WEBPAY_RETURN_URL", "http://localhost:8000/webpay/return")
+        return os.getenv("WEBPAY_RETURN_URL", "http://localhost:8081/webpay/return")
     
     @classmethod
     def get_integration_host(cls) -> str:
