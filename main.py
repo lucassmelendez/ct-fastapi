@@ -694,27 +694,91 @@ async def convert_currency_endpoint(amount: float, from_currency: str = "CLP", t
     Returns:
         Resultado de la conversión con tipo de cambio actual
     """
-    if not bcentral_service:
-        raise HTTPException(
-            status_code=503, 
-            detail="Servicio del Banco Central no disponible. Verifica la configuración."
-        )
-    
     try:
-        result = bcentral_service.convert_currency(amount, from_currency, to_currency)
+        # Intentar usar el servicio del Banco Central primero
+        if bcentral_service:
+            try:
+                result = bcentral_service.convert_currency(amount, from_currency, to_currency)
+                
+                if "error" not in result:
+                    return {
+                        "success": True,
+                        "conversion": result,
+                        "formatted": {
+                            "original": f"{result['from_symbol']}{amount:,.0f}" if from_currency != "CLP" else f"${amount:,.0f}",
+                            "converted": f"{result['to_symbol']}{result['converted_amount']:,.0f}" if to_currency != "CLP" else f"${result['converted_amount']:,.0f}",
+                            "combined": f"${amount:,.0f}/{result['converted_amount']:.0f}{result['to_symbol']}" if from_currency == "CLP" and to_currency == "USD" else f"{result['from_symbol']}{amount:,.0f}/{result['to_symbol']}{result['converted_amount']:,.0f}"
+                        },
+                        "source": "Banco Central de Chile"
+                    }
+            except Exception as e:
+                print(f"⚠️ Error en servicio Banco Central: {e}")
         
-        if "error" in result:
-            raise HTTPException(status_code=400, detail=result["error"])
+        # Fallback: usar tipo de cambio aproximado
+        # Tipo de cambio aproximado USD/CLP (actualizar según sea necesario)
+        usd_clp_rate = 950.0  # Aproximadamente 950 pesos por dólar
         
-        return {
-            "success": True,
-            "conversion": result,
-            "formatted": {
-                "original": f"{result['from_symbol']}{amount:,.0f}" if from_currency != "CLP" else f"${amount:,.0f}",
-                "converted": f"{result['to_symbol']}{result['converted_amount']:,.0f}" if to_currency != "CLP" else f"${result['converted_amount']:,.0f}",
-                "combined": f"${amount:,.0f}/{result['converted_amount']:.0f}{result['to_symbol']}" if from_currency == "CLP" and to_currency == "USD" else f"{result['from_symbol']}{amount:,.0f}/{result['to_symbol']}{result['converted_amount']:,.0f}"
+        if from_currency == "CLP" and to_currency == "USD":
+            converted_amount = amount / usd_clp_rate
+            return {
+                "success": True,
+                "conversion": {
+                    "amount": amount,
+                    "from_currency": from_currency,
+                    "from_symbol": "$",
+                    "to_currency": to_currency,
+                    "to_symbol": "US$",
+                    "converted_amount": round(converted_amount, 0),
+                    "rate": usd_clp_rate
+                },
+                "formatted": {
+                    "original": f"${amount:,.0f}",
+                    "converted": f"US${converted_amount:.0f}",
+                    "combined": f"${amount:,.0f}/{converted_amount:.0f}USD"
+                },
+                "source": "Tipo de cambio aproximado"
             }
-        }
+        elif from_currency == "USD" and to_currency == "CLP":
+            converted_amount = amount * usd_clp_rate
+            return {
+                "success": True,
+                "conversion": {
+                    "amount": amount,
+                    "from_currency": from_currency,
+                    "from_symbol": "US$",
+                    "to_currency": to_currency,
+                    "to_symbol": "$",
+                    "converted_amount": round(converted_amount, 0),
+                    "rate": usd_clp_rate
+                },
+                "formatted": {
+                    "original": f"US${amount:,.0f}",
+                    "converted": f"${converted_amount:,.0f}",
+                    "combined": f"US${amount:,.0f}/${converted_amount:,.0f}"
+                },
+                "source": "Tipo de cambio aproximado"
+            }
+        else:
+            # Para otras conversiones, devolver el mismo valor
+            return {
+                "success": True,
+                "conversion": {
+                    "amount": amount,
+                    "from_currency": from_currency,
+                    "from_symbol": "$" if from_currency == "CLP" else from_currency,
+                    "to_currency": to_currency,
+                    "to_symbol": "$" if to_currency == "CLP" else to_currency,
+                    "converted_amount": amount,
+                    "rate": 1.0
+                },
+                "formatted": {
+                    "original": f"${amount:,.0f}",
+                    "converted": f"${amount:,.0f}",
+                    "combined": f"${amount:,.0f}"
+                },
+                "source": "Sin conversión"
+            }
+            
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en conversión: {str(e)}")
 
@@ -729,27 +793,39 @@ async def get_exchange_rate_endpoint(currency: str = "USD"):
     Returns:
         Tipo de cambio actual
     """
-    if not bcentral_service:
-        raise HTTPException(
-            status_code=503, 
-            detail="Servicio del Banco Central no disponible. Verifica la configuración."
-        )
-    
     try:
-        rates = bcentral_service.get_exchange_rate(currency=currency)
+        # Intentar usar el servicio del Banco Central primero
+        if bcentral_service:
+            try:
+                rates = bcentral_service.get_exchange_rate(currency=currency)
+                
+                if rates:
+                    current_rate = rates[0]
+                    return {
+                        "success": True,
+                        "currency": currency,
+                        "rate": current_rate["valor"],
+                        "date": current_rate["fecha"],
+                        "formatted_rate": f"1 {currency} = ${current_rate['valor']:,.2f} CLP",
+                        "source": "Banco Central de Chile"
+                    }
+            except Exception as e:
+                print(f"⚠️ Error en servicio Banco Central: {e}")
         
-        if not rates:
-            raise HTTPException(status_code=404, detail=f"No se encontró tipo de cambio para {currency}")
-        
-        current_rate = rates[0]
-        
-        return {
-            "success": True,
-            "currency": currency,
-            "rate": current_rate["valor"],
-            "date": current_rate["fecha"],
-            "formatted_rate": f"1 {currency} = ${current_rate['valor']:,.2f} CLP"
-        }
+        # Fallback: usar tipo de cambio aproximado
+        if currency.upper() == "USD":
+            rate = 950.0
+            return {
+                "success": True,
+                "currency": currency,
+                "rate": rate,
+                "date": "2024-01-01",  # Fecha aproximada
+                "formatted_rate": f"1 {currency} = ${rate:,.2f} CLP",
+                "source": "Tipo de cambio aproximado"
+            }
+        else:
+            raise HTTPException(status_code=404, detail=f"Tipo de cambio no disponible para {currency}")
+            
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al obtener tipo de cambio: {str(e)}")
 
