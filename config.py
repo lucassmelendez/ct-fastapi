@@ -78,8 +78,34 @@ class AppConfig:
     @classmethod
     def get_cors_origins(cls) -> list:
         """Obtiene los orígenes permitidos para CORS"""
-        origins_str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:8080,http://127.0.0.1:5500")
-        return [origin.strip() for origin in origins_str.split(",") if origin.strip()]
+        # Orígenes por defecto para desarrollo y producción
+        default_origins = [
+            "http://localhost:3000",
+            "http://localhost:8080", 
+            "http://localhost:8081",  # React Native/Expo
+            "http://127.0.0.1:5500",
+            "http://127.0.0.1:8081",  # React Native/Expo alternativo
+            "http://192.168.1.1:8081", # Para dispositivos móviles en red local
+            "http://192.168.0.1:8081", # Para dispositivos móviles en red local
+            "http://10.0.2.2:8081",   # Para emulador Android
+            "https://ct-fastapi.vercel.app",  # Tu dominio de Vercel
+            "*"  # Permitir todos los orígenes (solo para desarrollo)
+        ]
+        
+        origins_str = os.getenv("CORS_ORIGINS", ",".join(default_origins))
+        origins = [origin.strip() for origin in origins_str.split(",") if origin.strip()]
+        
+        # Si estamos en desarrollo, agregar algunos orígenes adicionales comunes
+        if cls.DEBUG:
+            additional_dev_origins = [
+                "http://localhost:19006",  # Expo web
+                "http://localhost:19000",  # Expo DevTools
+                "exp://localhost:19000",   # Expo app
+                "exp://127.0.0.1:19000",   # Expo app alternativo
+            ]
+            origins.extend(additional_dev_origins)
+        
+        return list(set(origins))  # Eliminar duplicados
     
     # Base de datos
     DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./cowtracker.db")
