@@ -140,28 +140,77 @@ class WebpayService:
             Dict con los detalles de la transacción confirmada
         """
         try:
+            print(f"🔄 Confirmando transacción con token: {token}")
             response = self.transaction.commit(token)
             
-            return {
-                "success": True,
-                "vci": response.vci,
-                "amount": response.amount,
-                "status": response.status,
-                "buy_order": response.buy_order,
-                "session_id": response.session_id,
-                "card_detail": {
-                    "card_number": response.card_detail.card_number if hasattr(response, 'card_detail') else None
-                },
-                "accounting_date": response.accounting_date,
-                "transaction_date": response.transaction_date,
-                "authorization_code": response.authorization_code,
-                "payment_type_code": response.payment_type_code,
-                "response_code": response.response_code,
-                "installments_number": response.installments_number,
-                "environment": self.environment
-            }
+            print(f"📥 Tipo de respuesta de Webpay: {type(response)}")
+            print(f"📥 Respuesta completa: {response}")
             
+            # Si la respuesta es un diccionario, devolverlo directamente
+            if isinstance(response, dict):
+                if 'error' in response:
+                    print(f"❌ Error reportado por Webpay: {response['error']}")
+                    return {
+                        "success": False,
+                        "error": response.get('error', 'Error desconocido'),
+                        "message": "Error al confirmar la transacción",
+                        "environment": self.environment
+                    }
+                
+                # Si es un diccionario de éxito, agregar success
+                response_with_success = {
+                    "success": True,
+                    "environment": self.environment,
+                    **response
+                }
+                return response_with_success
+                
+            # Crear una estructura consistente a partir de un objeto de respuesta
+            try:
+                return {
+                    "success": True,
+                    "vci": getattr(response, 'vci', None),
+                    "amount": getattr(response, 'amount', 0),
+                    "status": getattr(response, 'status', None),
+                    "buy_order": getattr(response, 'buy_order', None),
+                    "session_id": getattr(response, 'session_id', None),
+                    "card_detail": {
+                        "card_number": getattr(response.card_detail, 'card_number', None) if hasattr(response, 'card_detail') else None
+                    },
+                    "accounting_date": getattr(response, 'accounting_date', None),
+                    "transaction_date": getattr(response, 'transaction_date', None),
+                    "authorization_code": getattr(response, 'authorization_code', None),
+                    "payment_type_code": getattr(response, 'payment_type_code', None),
+                    "response_code": getattr(response, 'response_code', None),
+                    "installments_number": getattr(response, 'installments_number', None),
+                    "environment": self.environment
+                }
+            except AttributeError as attr_error:
+                print(f"❌ Error de atributo: {attr_error}")
+                # Intentar acceder como diccionario si falla como atributo
+                return {
+                    "success": True,
+                    "vci": response.get('vci') if hasattr(response, 'get') else None,
+                    "amount": response.get('amount', 0) if hasattr(response, 'get') else 0,
+                    "status": response.get('status') if hasattr(response, 'get') else None,
+                    "buy_order": response.get('buy_order') if hasattr(response, 'get') else None,
+                    "session_id": response.get('session_id') if hasattr(response, 'get') else None,
+                    "card_detail": {
+                        "card_number": response.get('card_detail', {}).get('card_number') if hasattr(response, 'get') else None
+                    },
+                    "accounting_date": response.get('accounting_date') if hasattr(response, 'get') else None,
+                    "transaction_date": response.get('transaction_date') if hasattr(response, 'get') else None,
+                    "authorization_code": response.get('authorization_code') if hasattr(response, 'get') else None,
+                    "payment_type_code": response.get('payment_type_code') if hasattr(response, 'get') else None,
+                    "response_code": response.get('response_code') if hasattr(response, 'get') else None,
+                    "installments_number": response.get('installments_number') if hasattr(response, 'get') else None,
+                    "environment": self.environment
+                }
+                
         except Exception as e:
+            print(f"❌ Error en confirm_transaction: {str(e)}")
+            print(f"❌ Tipo de error: {type(e)}")
+            
             return {
                 "success": False,
                 "error": str(e),
