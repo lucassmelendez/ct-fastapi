@@ -680,6 +680,79 @@ async def get_transaction_by_order(buy_order: str):
         raise HTTPException(status_code=404, detail="Transacción no encontrada")
     return transaction
 
+# Endpoints para conversión de moneda
+@app.get("/currency/convert")
+async def convert_currency_endpoint(amount: float, from_currency: str = "CLP", to_currency: str = "USD"):
+    """
+    Convertir un monto entre diferentes monedas usando datos del Banco Central de Chile
+    
+    Args:
+        amount: Cantidad a convertir
+        from_currency: Moneda de origen (CLP, USD, EUR, etc.)
+        to_currency: Moneda de destino (CLP, USD, EUR, etc.)
+    
+    Returns:
+        Resultado de la conversión con tipo de cambio actual
+    """
+    if not bcentral_service:
+        raise HTTPException(
+            status_code=503, 
+            detail="Servicio del Banco Central no disponible. Verifica la configuración."
+        )
+    
+    try:
+        result = bcentral_service.convert_currency(amount, from_currency, to_currency)
+        
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        
+        return {
+            "success": True,
+            "conversion": result,
+            "formatted": {
+                "original": f"{result['from_symbol']}{amount:,.0f}" if from_currency != "CLP" else f"${amount:,.0f}",
+                "converted": f"{result['to_symbol']}{result['converted_amount']:,.0f}" if to_currency != "CLP" else f"${result['converted_amount']:,.0f}",
+                "combined": f"${amount:,.0f}/{result['converted_amount']:.0f}{result['to_symbol']}" if from_currency == "CLP" and to_currency == "USD" else f"{result['from_symbol']}{amount:,.0f}/{result['to_symbol']}{result['converted_amount']:,.0f}"
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en conversión: {str(e)}")
+
+@app.get("/currency/rate/{currency}")
+async def get_exchange_rate_endpoint(currency: str = "USD"):
+    """
+    Obtener el tipo de cambio actual para una moneda específica
+    
+    Args:
+        currency: Código de moneda (USD, EUR, etc.)
+    
+    Returns:
+        Tipo de cambio actual
+    """
+    if not bcentral_service:
+        raise HTTPException(
+            status_code=503, 
+            detail="Servicio del Banco Central no disponible. Verifica la configuración."
+        )
+    
+    try:
+        rates = bcentral_service.get_exchange_rate(currency=currency)
+        
+        if not rates:
+            raise HTTPException(status_code=404, detail=f"No se encontró tipo de cambio para {currency}")
+        
+        current_rate = rates[0]
+        
+        return {
+            "success": True,
+            "currency": currency,
+            "rate": current_rate["valor"],
+            "date": current_rate["fecha"],
+            "formatted_rate": f"1 {currency} = ${current_rate['valor']:,.2f} CLP"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al obtener tipo de cambio: {str(e)}")
+
 # Para desarrollo local
 if __name__ == "__main__":
     uvicorn.run(app, host=AppConfig.HOST, port=AppConfig.PORT, debug=AppConfig.DEBUG) 
