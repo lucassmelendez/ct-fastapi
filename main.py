@@ -5,9 +5,6 @@ from pydantic import BaseModel
 from typing import List, Optional
 import uvicorn
 import os
-import time
-import httpx
-import requests
 
 # Configurar variables de entorno para Supabase
 try:
@@ -490,7 +487,7 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
             </html>
             """)
         
-        # ✅ Pago exitoso - Redirigir a la app para que maneje la actualización
+        # ✅ Pago exitoso - Redirigir al frontend local para que maneje la actualización
         buy_order = transaction_result.get('buy_order', '')
         amount = transaction_result.get('amount', 0)
         authorization_code = transaction_result.get('authorization_code', '')
@@ -500,10 +497,7 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
         print(f"   - Monto: {amount}")
         print(f"   - Código de autorización: {authorization_code}")
         
-        # En lugar de actualizar Supabase aquí, redirigir a la app con la información del pago
-        # La app se encargará de actualizar el usuario usando su propio backend
-        
-        # ✅ Todo exitoso - Redirigir a la app para que maneje la actualización
+        # Redirigir al frontend local para que maneje la actualización del usuario
         return HTMLResponse(content=f"""
             <!DOCTYPE html>
             <html>
@@ -519,13 +513,11 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                     .message {{ color: #666; margin-bottom: 30px; font-size: 16px; line-height: 1.5; }}
                     .details {{ background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: left; }}
                     .premium-badge {{ background: linear-gradient(45deg, #f39c12, #e67e22); color: white; padding: 10px 20px; border-radius: 25px; display: inline-block; margin: 20px 0; font-weight: bold; }}
-                    .button {{ background: #27ae60; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold; margin-top: 20px; }}
+                    .loading {{ color: #27ae60; font-size: 18px; margin: 20px 0; }}
+                    .button {{ background: #27ae60; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold; margin: 10px; }}
                     .button:hover {{ background: #229954; }}
-                    .button-group {{ display: flex; flex-direction: column; gap: 15px; }}
-                    .secondary-button {{ background: #3498db; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold; }}
+                    .secondary-button {{ background: #3498db; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold; margin: 10px; }}
                     .secondary-button:hover {{ background: #2980b9; }}
-                    .loading {{ display: none; margin-top: 20px; }}
-                    .loading.show {{ display: block; }}
                     @media (max-width: 600px) {{ 
                         body {{ padding: 20px; }}
                         .container {{ padding: 25px; }}
@@ -548,46 +540,36 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                         📅 Fecha: {transaction_result.get('transaction_date', 'N/A')}
                     </div>
                     <div class="loading" id="loading">
-                        <div style="color: #27ae60; font-size: 18px;">
-                            🔄 Redirigiendo a CowTracker...
-                        </div>
+                        🔄 Redirigiendo a CowTracker...
                     </div>
-                    <div class="button-group" id="buttons">
-                        <a href="cowtracker://premium/activate?order={buy_order}&amount={amount}&auth={authorization_code}" class="button" onclick="showLoading()">
-                            🏠 Abrir CowTracker App
+                    <div id="buttons" style="display: none;">
+                        <a href="http://localhost:8081/premium/activate?order={buy_order}&amount={amount}&auth={authorization_code}" class="button">
+                            🖥️ Continuar en CowTracker Local
                         </a>
-                        <a href="https://cowtracker.app/premium/activate?order={buy_order}&amount={amount}&auth={authorization_code}" class="secondary-button">
-                            🌐 Abrir CowTracker en Web
+                        <a href="cowtracker://premium/activate?order={buy_order}&amount={amount}&auth={authorization_code}" class="secondary-button">
+                            📱 Abrir App CowTracker
                         </a>
                     </div>
                 </div>
                 <script>
-                    function showLoading() {{
-                        document.getElementById('loading').classList.add('show');
-                        document.getElementById('buttons').style.opacity = '0.5';
-                    }}
-                    
-                    // Intento de redirección automática a la app después de 2 segundos
+                    // Redirección automática al frontend local después de 2 segundos
                     setTimeout(function() {{
                         try {{
-                            showLoading();
-                            // Intentar abrir la app con los datos del pago
-                            window.location.href = "cowtracker://premium/activate?order={buy_order}&amount={amount}&auth={authorization_code}";
-                            
-                            // Después de 3 segundos, verificar si seguimos en esta página
-                            setTimeout(function() {{
-                                if (document.hasFocus()) {{
-                                    console.log("La app no está instalada, manteniendo opciones web");
-                                    document.getElementById('loading').classList.remove('show');
-                                    document.getElementById('buttons').style.opacity = '1';
-                                }}
-                            }}, 3000);
+                            // Redirigir al frontend local
+                            window.location.href = "http://localhost:8081/premium/activate?order={buy_order}&amount={amount}&auth={authorization_code}";
                         }} catch (e) {{
                             console.error("Error en redirección:", e);
-                            document.getElementById('loading').classList.remove('show');
-                            document.getElementById('buttons').style.opacity = '1';
+                            // Mostrar botones como fallback
+                            document.getElementById('loading').style.display = 'none';
+                            document.getElementById('buttons').style.display = 'block';
                         }}
                     }}, 2000);
+                    
+                    // Mostrar botones después de 5 segundos como fallback
+                    setTimeout(function() {{
+                        document.getElementById('loading').style.display = 'none';
+                        document.getElementById('buttons').style.display = 'block';
+                    }}, 5000);
                 </script>
             </body>
             </html>
@@ -687,162 +669,6 @@ async def get_transaction_by_order(buy_order: str):
     if not transaction:
         raise HTTPException(status_code=404, detail="Transacción no encontrada")
     return transaction
-
-@app.post("/activate-premium/{buy_order}")
-@app.get("/activate-premium/{buy_order}")  # Añadir soporte para GET para facilitar el uso desde navegadores
-async def activate_premium_manually(buy_order: str):
-    """
-    Activar manualmente una cuenta premium usando el buy_order
-    Útil cuando el proceso automático falló pero el pago fue exitoso
-    """
-    if not buy_order or not buy_order.startswith("prem_"):
-        error_msg = "Orden de compra inválida. Debe comenzar con 'prem_'"
-        return HTMLResponse(content=f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Error de Activación - CowTracker Premium</title>
-                <meta charset="utf-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <style>
-                    body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f8f9fa; }}
-                    .container {{ max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
-                    .error {{ color: #e74c3c; font-size: 24px; margin-bottom: 20px; }}
-                    .message {{ color: #666; margin-bottom: 30px; }}
-                    .button {{ background: #3498db; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; }}
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="error">❌ Error de Activación</div>
-                    <div class="message">
-                        {error_msg}
-                    </div>
-                    <a href="https://cowtracker.app" class="button">Volver a CowTracker</a>
-                </div>
-            </body>
-            </html>
-        """, status_code=400)
-    
-    result_message = ""
-    status_code = 200
-    success = False
-    
-    try:
-        # Extraer el user_id_part desde el buy_order
-        parts = buy_order.split('_')
-        if len(parts) < 2:
-            result_message = "Formato de orden de compra inválido"
-            status_code = 400
-        else:
-            user_id_part = parts[1]
-            print(f"🔍 Buscando usuario con id_autentificar que contenga: {user_id_part}")
-            
-            # Inicializar Supabase directamente sin reintentos para ser compatible con Vercel
-            from supabase import create_client, Client
-            
-            supabase_url = os.getenv("SUPABASE_URL")
-            supabase_key = os.getenv("SUPABASE_ANON_KEY")
-            
-            if not supabase_url or not supabase_key:
-                result_message = "Credenciales de Supabase no configuradas"
-                status_code = 500
-            else:
-                try:
-                    print(f"🔌 Conectando a Supabase URL: {supabase_url}")
-                    supabase: Client = create_client(supabase_url, supabase_key)
-                    
-                    # Intentar obtener todos los usuarios
-                    users_response = supabase.table('usuario').select('*').execute()
-                    users = users_response.data
-                    print(f"📊 Total usuarios encontrados: {len(users)}")
-                    
-                    # Buscar manualmente el usuario que coincida
-                    matching_user = None
-                    for user in users:
-                        auth_id = user.get('id_autentificar')
-                        user_id = user.get('id_usuario')
-                        print(f"👤 Verificando usuario ID {user_id}, auth ID: {auth_id}")
-                        
-                        # Convertir a string para buscar coincidencia
-                        if auth_id is not None and user_id_part in str(auth_id):
-                            matching_user = user
-                            break
-                    
-                    if matching_user:
-                        user_id = matching_user['id_usuario']
-                        current_premium = matching_user['id_premium']
-                        
-                        print(f"👤 Usuario encontrado: ID {user_id}, Premium actual: {current_premium}")
-                        
-                        # Si ya es premium, informar
-                        if current_premium == 2:
-                            result_message = "¡Tu cuenta ya tiene estado Premium! No es necesario activarla nuevamente."
-                            success = True
-                        else:
-                            # Actualizar a premium
-                            update_response = supabase.table('usuario').update({
-                                'id_premium': 2
-                            }).eq('id_usuario', user_id).execute()
-                            
-                            if update_response.data:
-                                print(f"✅ Usuario actualizado a Premium exitosamente!")
-                                result_message = "¡Tu cuenta ha sido actualizada a Premium exitosamente!"
-                                success = True
-                            else:
-                                result_message = "Error al actualizar tu cuenta a Premium. Por favor, contacta a soporte."
-                                status_code = 500
-                    else:
-                        result_message = f"No se encontró usuario asociado a este código. Por favor, contacta a soporte."
-                        status_code = 404
-                except Exception as e:
-                    print(f"❌ Error durante el proceso de activación: {e}")
-                    result_message = f"Error durante el proceso de activación: {str(e)}"
-                    status_code = 500
-    except Exception as e:
-        print(f"❌ Error general en activate_premium_manually: {e}")
-        result_message = f"Error inesperado: {str(e)}"
-        status_code = 500
-    
-    # Devolver una respuesta HTML amigable para el usuario
-    emoji = "✅" if success else "❌"
-    color = "#27ae60" if success else "#e74c3c"
-    return HTMLResponse(content=f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Activación de Premium - CowTracker</title>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-                body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f8f9fa; }}
-                .container {{ max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
-                .result {{ color: {color}; font-size: 24px; margin-bottom: 20px; }}
-                .message {{ color: #666; margin-bottom: 30px; }}
-                .button {{ background: #3498db; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin-right: 10px; }}
-                .success-button {{ background: #27ae60; }}
-                .button-group {{ margin-top: 20px; }}
-                .details {{ background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0; text-align: left; }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="result">{emoji} {("¡Éxito!" if success else "Error")}</div>
-                <div class="message">
-                    {result_message}
-                </div>
-                <div class="details">
-                    <strong>Detalles de la orden:</strong><br>
-                    Orden: {buy_order}
-                </div>
-                <div class="button-group">
-                    {"<a href='cowtracker://premium/success' class='button success-button'>Abrir CowTracker App</a>" if success else ""}
-                    <a href="https://cowtracker.app" class="button">Ir a CowTracker Web</a>
-                </div>
-            </div>
-        </body>
-        </html>
-    """, status_code=status_code)
 
 # Para desarrollo local
 if __name__ == "__main__":
