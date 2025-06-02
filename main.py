@@ -7,6 +7,7 @@ import uvicorn
 import os
 import time
 import httpx
+import requests
 
 # Configurar variables de entorno para Supabase
 try:
@@ -505,8 +506,9 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
             if user_id_part:
                 print(f"🔍 Buscando usuario con UID que termine en: {user_id_part}")
                 
-                # Inicializar Supabase con configuración mínima
-                from supabase import create_client
+                # Usar requests en lugar de httpx para mejor compatibilidad
+                import requests
+                import json
                 
                 supabase_url = os.getenv("SUPABASE_URL")
                 supabase_key = os.getenv("SUPABASE_ANON_KEY")
@@ -517,37 +519,56 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                 print(f"🔌 Conectando a Supabase URL: {supabase_url}")
                 
                 try:
-                    # Crear cliente HTTP con timeout corto
-                    timeout = httpx.Timeout(10.0, connect=5.0)
-                    client = httpx.Client(timeout=timeout)
-                    
-                    # Construir headers para la petición directa
+                    # Configurar headers para la petición
                     headers = {
                         "apikey": supabase_key,
                         "Authorization": f"Bearer {supabase_key}",
-                        "Content-Type": "application/json"
+                        "Content-Type": "application/json",
+                        "Prefer": "return=minimal"
                     }
                     
-                    # Intentar búsqueda directa primero
-                    search_url = f"{supabase_url}/rest/v1/usuario?id_autentificar=ilike.*{user_id_part}*"
-                    response = client.get(search_url, headers=headers)
+                    # Configurar timeout y session
+                    session = requests.Session()
+                    session.headers.update(headers)
+                    
+                    # Buscar usuario directamente por id_autentificar
+                    print(f"🔍 Buscando usuario con id_autentificar que contenga: {user_id_part}")
+                    
+                    # Intentar búsqueda con filtro like
+                    search_url = f"{supabase_url}/rest/v1/usuario"
+                    params = {"id_autentificar": f"like.*{user_id_part}*"}
+                    
+                    response = session.get(search_url, params=params, timeout=15)
+                    
+                    if response.status_code != 200:
+                        print(f"❌ Error en búsqueda: {response.status_code} - {response.text}")
+                        raise Exception(f"Error en búsqueda: {response.status_code}")
+                    
                     users = response.json()
+                    print(f"📊 Usuarios encontrados en búsqueda directa: {len(users)}")
                     
+                    # Si no encuentra usuarios, intentar obtener todos
                     if not users:
-                        # Si no encuentra, obtener todos los usuarios
-                        print("⚠️ No se encontró por búsqueda directa, intentando búsqueda alternativa...")
-                        all_users_url = f"{supabase_url}/rest/v1/usuario"
-                        response = client.get(all_users_url, headers=headers)
-                        users = response.json()
+                        print("⚠️ No se encontró por búsqueda directa, obteniendo todos los usuarios...")
+                        response = session.get(search_url, timeout=15)
+                        
+                        if response.status_code != 200:
+                            raise Exception(f"Error al obtener usuarios: {response.status_code}")
+                        
+                        all_users = response.json()
+                        print(f"📊 Total usuarios en base de datos: {len(all_users)}")
+                        
+                        # Filtrar manualmente
+                        users = [user for user in all_users if user_id_part in str(user.get('id_autentificar', ''))]
+                        print(f"📊 Usuarios que coinciden: {len(users)}")
                     
-                    print(f"📊 Total usuarios encontrados: {len(users)}")
-                    
-                    # Buscar el usuario que coincida
+                    # Buscar el usuario que coincida exactamente
                     matching_user = None
                     for user in users:
                         auth_id = str(user.get('id_autentificar', ''))
                         if user_id_part in auth_id:
                             matching_user = user
+                            print(f"✅ Usuario encontrado: {auth_id}")
                             break
                     
                     if matching_user:
@@ -558,38 +579,43 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                         
                         # Actualizar a premium si no lo es ya
                         if current_premium != 2:
-                            try:
-                                # Actualizar usando PATCH directo
-                                update_url = f"{supabase_url}/rest/v1/usuario?id_usuario=eq.{user_id}"
-                                update_data = {'id_premium': 2}
-                                
-                                update_response = client.patch(
-                                    update_url,
-                                    headers=headers,
-                                    json=update_data
-                                )
-                                
-                                if update_response.status_code in [200, 204]:
-                                    print("✅ Usuario actualizado a Premium exitosamente!")
-                                else:
-                                    print(f"❌ Error en actualización: {update_response.text}")
-                                    raise Exception(f"Error al actualizar usuario: {update_response.text}")
-                            except Exception as update_error:
-                                print(f"❌ Error en actualización: {update_error}")
-                                raise Exception(f"Error en actualización: {update_error}")
+                            print("🔄 Actualizando usuario a Premium...")
+                            
+                            # Actualizar usando PATCH
+                            update_url = f"{supabase_url}/rest/v1/usuario"
+                            update_params = {"id_usuario": f"eq.{user_id}"}
+                            update_data = {"id_premium": 2}
+                            
+                            update_response = session.patch(
+                                update_url,
+                                params=update_params,
+                                json=update_data,
+                                timeout=15
+                            )
+                            
+                            print(f"📤 Respuesta de actualización: {update_response.status_code}")
+                            
+                            if update_response.status_code in [200, 204]:
+                                print("✅ Usuario actualizado a Premium exitosamente!")
+                            else:
+                                print(f"❌ Error en actualización: {update_response.status_code} - {update_response.text}")
+                                raise Exception(f"Error al actualizar usuario: {update_response.status_code}")
                         else:
                             print("ℹ️ Usuario ya era premium")
                     else:
                         print("❌ No se encontró el usuario")
                         raise Exception("Usuario no encontrado")
                         
+                except requests.exceptions.RequestException as req_error:
+                    print(f"❌ Error de conexión: {req_error}")
+                    raise Exception(f"Error de conexión: {req_error}")
                 except Exception as api_error:
-                    print(f"❌ Error en API Supabase: {api_error}")
-                    raise Exception(f"Error en API Supabase: {api_error}")
+                    print(f"❌ Error en API: {api_error}")
+                    raise Exception(f"Error en API: {api_error}")
                 finally:
-                    # Cerrar el cliente HTTP
-                    if 'client' in locals():
-                        client.close()
+                    # Cerrar la sesión
+                    if 'session' in locals():
+                        session.close()
             else:
                 print("❌ No se pudo extraer ID de usuario del buy_order")
                 raise Exception("Formato de buy_order inválido")
