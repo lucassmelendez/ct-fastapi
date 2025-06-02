@@ -554,9 +554,12 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                             raise Exception("Error al actualizar usuario")
                     else:
                         print(f"ℹ️ Usuario ya era premium")
-        else:
+                else:
                     print(f"❌ No se encontró usuario con UID que termine en: {user_id_part}")
                     raise Exception("Usuario no encontrado")
+            else:
+                print(f"❌ No se pudo extraer el ID de usuario del buy_order: {buy_order}")
+                raise Exception("Formato de buy_order inválido")
                     
         except Exception as user_update_error:
             print(f"❌ Error al actualizar usuario: {user_update_error}")
