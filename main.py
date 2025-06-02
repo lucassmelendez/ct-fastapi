@@ -333,112 +333,339 @@ async def confirm_webpay_transaction(request: Request):
         raise HTTPException(status_code=500, detail=f"Error al confirmar transacción: {str(e)}")
 
 @app.get("/webpay/return")
-async def webpay_return(request: Request):
-    """Página de retorno después del pago"""
-    if not webpay_service:
-        return HTMLResponse("""
-        <html>
-            <body>
-                <h1>Error de Configuración</h1>
-                <p>Webpay no está configurado correctamente.</p>
-                <a href="/">Volver al inicio</a>
-            </body>
-        </html>
-        """)
-    
+async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_COMPRA: str = None, TBK_ID_SESION: str = None):
+    """
+    Endpoint que maneja el retorno desde Webpay después del pago
+    """
     try:
-        # Obtener parámetros de la URL
-        token_ws = request.query_params.get("token_ws")
+        print(f"🔄 Procesando retorno de Webpay:")
+        print(f"   - token_ws: {token_ws}")
+        print(f"   - TBK_TOKEN: {TBK_TOKEN}")
+        print(f"   - TBK_ORDEN_COMPRA: {TBK_ORDEN_COMPRA}")
+        print(f"   - TBK_ID_SESION: {TBK_ID_SESION}")
         
+        # Si hay TBK_TOKEN, significa que el usuario canceló o hubo error
+        if TBK_TOKEN:
+            print("❌ Transacción cancelada o con error")
+            return HTMLResponse(content="""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Pago Cancelado - CowTracker</title>
+                    <meta charset="utf-8">
+                    <style>
+                        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f8f9fa; }
+                        .container { max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                        .error { color: #e74c3c; font-size: 24px; margin-bottom: 20px; }
+                        .message { color: #666; margin-bottom: 30px; }
+                        .button { background: #3498db; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="error">❌ Pago Cancelado</div>
+                        <div class="message">
+                            El pago fue cancelado o no se pudo procesar. 
+                            No se realizaron cargos a tu tarjeta.
+                        </div>
+                        <a href="#" onclick="window.close()" class="button">Cerrar Ventana</a>
+                    </div>
+                </body>
+                </html>
+            """)
+        
+        # Si no hay token_ws, es un error
         if not token_ws:
-            return HTMLResponse("""
-            <html>
-                <body>
-                    <h1>Error en el pago</h1>
-                    <p>No se recibió el token de la transacción.</p>
-                    <a href="/">Volver al inicio</a>
-                </body>
-            </html>
-            """)
-        
-        # Confirmar automáticamente la transacción
-        result = webpay_service.confirm_transaction(token_ws)
-        
-        # Buscar la transacción en la base de datos
-        transaction = next((t for t in transactions_db if t.get("token") == token_ws), None)
-        
-        if result["success"] and result["response_code"] == 0:
-            # Pago exitoso
-            if transaction:
-                transaction["status"] = "confirmed"
-                transaction["webpay_response"] = result
-            
-            return HTMLResponse(f"""
-            <html>
+            print("❌ No se recibió token de transacción")
+            return HTMLResponse(content="""
+                <!DOCTYPE html>
+                <html>
                 <head>
-                    <title>Pago Exitoso - CowTracker</title>
+                    <title>Error - CowTracker</title>
+                    <meta charset="utf-8">
                     <style>
-                        body {{ font-family: Arial, sans-serif; margin: 40px; }}
-                        .success {{ color: green; }}
-                        .info {{ background: #f0f0f0; padding: 20px; margin: 20px 0; }}
-                        .env {{ background: #e8f4fd; padding: 10px; margin: 10px 0; border-radius: 4px; }}
+                        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f8f9fa; }
+                        .container { max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                        .error { color: #e74c3c; font-size: 24px; margin-bottom: 20px; }
+                        .message { color: #666; margin-bottom: 30px; }
+                        .button { background: #3498db; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; }
                     </style>
                 </head>
                 <body>
-                    <h1 class="success">¡Pago Exitoso!</h1>
-                    <div class="env">Ambiente: {result.get('environment', 'N/A')}</div>
-                    <div class="info">
-                        <h3>Detalles de la transacción:</h3>
-                        <p><strong>Orden de compra:</strong> {result.get('buy_order', 'N/A')}</p>
-                        <p><strong>Monto:</strong> ${result.get('amount', 0):,} CLP</p>
-                        <p><strong>Código de autorización:</strong> {result.get('authorization_code', 'N/A')}</p>
-                        <p><strong>Fecha:</strong> {result.get('transaction_date', 'N/A')}</p>
-                        {f"<p><strong>Vaca comprada:</strong> {transaction.get('cow_name', 'N/A')}</p>" if transaction and transaction.get('cow_name') else ""}
-                        {f"<p><strong>Comprador:</strong> {transaction.get('buyer_name', 'N/A')}</p>" if transaction and transaction.get('buyer_name') else ""}
+                    <div class="container">
+                        <div class="error">❌ Error en el Pago</div>
+                        <div class="message">
+                            No se pudo procesar la información del pago. 
+                            Por favor, intenta nuevamente.
+                        </div>
+                        <a href="#" onclick="window.close()" class="button">Cerrar Ventana</a>
                     </div>
-                    <a href="/">Volver al inicio</a>
                 </body>
-            </html>
+                </html>
             """)
-        else:
-            # Pago fallido
-            if transaction:
-                transaction["status"] = "failed"
-                transaction["webpay_response"] = result
-            
-            return HTMLResponse(f"""
-            <html>
+        
+        # Confirmar la transacción con Webpay
+        webpay_service = WebpayService()
+        transaction_result = webpay_service.confirm_transaction(token_ws)
+        
+        print(f"📥 Resultado de confirmación: {transaction_result}")
+        
+        if not transaction_result.get('success'):
+            print("❌ Error al confirmar transacción")
+            return HTMLResponse(content="""
+                <!DOCTYPE html>
+                <html>
                 <head>
-                    <title>Pago Fallido - CowTracker</title>
+                    <title>Error de Pago - CowTracker</title>
+                    <meta charset="utf-8">
                     <style>
-                        body {{ font-family: Arial, sans-serif; margin: 40px; }}
-                        .error {{ color: red; }}
-                        .info {{ background: #f0f0f0; padding: 20px; margin: 20px 0; }}
-                        .env {{ background: #e8f4fd; padding: 10px; margin: 10px 0; border-radius: 4px; }}
+                        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f8f9fa; }
+                        .container { max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                        .error { color: #e74c3c; font-size: 24px; margin-bottom: 20px; }
+                        .message { color: #666; margin-bottom: 30px; }
+                        .button { background: #3498db; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; }
                     </style>
                 </head>
                 <body>
-                    <h1 class="error">Pago Fallido</h1>
-                    <div class="env">Ambiente: {result.get('environment', 'N/A')}</div>
-                    <div class="info">
-                        <p>Lo sentimos, no se pudo procesar tu pago.</p>
-                        <p><strong>Código de respuesta:</strong> {result.get('response_code', 'N/A')}</p>
-                        <p><strong>Orden de compra:</strong> {result.get('buy_order', 'N/A')}</p>
+                    <div class="container">
+                        <div class="error">❌ Error en la Transacción</div>
+                        <div class="message">
+                            No se pudo confirmar el pago con el banco. 
+                            Si se realizó un cargo, será reversado automáticamente.
+                        </div>
+                        <a href="#" onclick="window.close()" class="button">Cerrar Ventana</a>
                     </div>
-                    <a href="/">Volver al inicio</a>
                 </body>
-            </html>
+                </html>
             """)
-    
-    except Exception as e:
-        return HTMLResponse(f"""
-        <html>
+        
+        # Verificar que el pago fue aprobado
+        response_code = transaction_result.get('response_code', 0)
+        if response_code != 0:
+            print(f"❌ Pago rechazado. Código de respuesta: {response_code}")
+            return HTMLResponse(content=f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Pago Rechazado - CowTracker</title>
+                    <meta charset="utf-8">
+                    <style>
+                        body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f8f9fa; }}
+                        .container {{ max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+                        .error {{ color: #e74c3c; font-size: 24px; margin-bottom: 20px; }}
+                        .message {{ color: #666; margin-bottom: 30px; }}
+                        .button {{ background: #3498db; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; }}
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="error">❌ Pago Rechazado</div>
+                        <div class="message">
+                            El pago fue rechazado por el banco (Código: {response_code}). 
+                            Por favor, verifica los datos de tu tarjeta e intenta nuevamente.
+                        </div>
+                        <a href="#" onclick="window.close()" class="button">Cerrar Ventana</a>
+                    </div>
+                </body>
+                </html>
+            """)
+        
+        # ✅ Pago exitoso - Actualizar usuario a premium
+        buy_order = transaction_result.get('buy_order', '')
+        amount = transaction_result.get('amount', 0)
+        
+        print(f"✅ Pago exitoso!")
+        print(f"   - Buy Order: {buy_order}")
+        print(f"   - Monto: {amount}")
+        print(f"   - Código de autorización: {transaction_result.get('authorization_code')}")
+        
+        # Extraer el UID del usuario desde el buy_order
+        # Formato: prem_d2374057_27468312 -> extraer d2374057
+        try:
+            user_id_part = buy_order.split('_')[1] if '_' in buy_order else None
+            if user_id_part:
+                print(f"🔍 Buscando usuario con UID que termine en: {user_id_part}")
+                
+                # Buscar el usuario en Supabase que tenga un UID que termine con esta parte
+                from supabase import create_client, Client
+                import os
+                
+                supabase_url = os.getenv("SUPABASE_URL")
+                supabase_key = os.getenv("SUPABASE_ANON_KEY")
+                
+                if not supabase_url or not supabase_key:
+                    print("❌ Credenciales de Supabase no configuradas")
+                    raise Exception("Credenciales de Supabase no configuradas")
+                
+                supabase: Client = create_client(supabase_url, supabase_key)
+                
+                # Buscar usuario cuyo id_autentificar termine con user_id_part
+                response = supabase.table('usuario').select('*').like('id_autentificar', f'%{user_id_part}').execute()
+                
+                if response.data and len(response.data) > 0:
+                    user = response.data[0]
+                    user_id = user['id_usuario']
+                    current_premium = user['id_premium']
+                    
+                    print(f"👤 Usuario encontrado: ID {user_id}, Premium actual: {current_premium}")
+                    
+                    if current_premium != 2:
+                        # Actualizar a premium
+                        update_response = supabase.table('usuario').update({
+                            'id_premium': 2
+                        }).eq('id_usuario', user_id).execute()
+                        
+                        if update_response.data:
+                            print(f"✅ Usuario actualizado a Premium exitosamente!")
+                            
+                            # Registrar la transacción en una tabla de pagos (opcional)
+                            try:
+                                payment_record = {
+                                    'id_usuario': user_id,
+                                    'buy_order': buy_order,
+                                    'amount': amount,
+                                    'authorization_code': transaction_result.get('authorization_code'),
+                                    'transaction_date': transaction_result.get('transaction_date'),
+                                    'payment_type': 'webpay_premium_upgrade',
+                                    'status': 'completed'
+                                }
+                                # Nota: Necesitarías crear una tabla 'pagos' en Supabase para esto
+                                print(f"💳 Registro de pago: {payment_record}")
+                            except Exception as payment_log_error:
+                                print(f"⚠️ No se pudo registrar el pago (no crítico): {payment_log_error}")
+                        else:
+                            print(f"❌ Error al actualizar usuario a premium")
+                            raise Exception("Error al actualizar usuario")
+                    else:
+                        print(f"ℹ️ Usuario ya era premium")
+                else:
+                    print(f"❌ No se encontró usuario con UID que termine en: {user_id_part}")
+                    raise Exception("Usuario no encontrado")
+                    
+        except Exception as user_update_error:
+            print(f"❌ Error al actualizar usuario: {user_update_error}")
+            # Aún mostrar éxito del pago, pero indicar que debe contactar soporte
+            return HTMLResponse(content=f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Pago Procesado - CowTracker</title>
+                    <meta charset="utf-8">
+                    <style>
+                        body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f8f9fa; }}
+                        .container {{ max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+                        .warning {{ color: #f39c12; font-size: 24px; margin-bottom: 20px; }}
+                        .message {{ color: #666; margin-bottom: 30px; }}
+                        .details {{ background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0; text-align: left; }}
+                        .button {{ background: #27ae60; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; }}
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="warning">⚠️ Pago Procesado</div>
+                        <div class="message">
+                            Tu pago fue procesado exitosamente, pero hubo un problema al activar tu cuenta Premium automáticamente.
+                        </div>
+                        <div class="details">
+                            <strong>Detalles del pago:</strong><br>
+                            Orden: {buy_order}<br>
+                            Monto: ${amount:,}<br>
+                            Autorización: {transaction_result.get('authorization_code', 'N/A')}
+                        </div>
+                        <div class="message">
+                            Por favor, contacta a soporte con estos datos para activar tu cuenta Premium.
+                        </div>
+                        <a href="#" onclick="window.close()" class="button">Cerrar Ventana</a>
+                    </div>
+                </body>
+                </html>
+            """)
+        
+        # ✅ Todo exitoso
+        return HTMLResponse(content=f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>¡Pago Exitoso! - CowTracker Premium</title>
+                <meta charset="utf-8">
+                <style>
+                    body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background: linear-gradient(135deg, #27ae60, #2ecc71); }}
+                    .container {{ max-width: 500px; margin: 0 auto; background: white; padding: 40px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }}
+                    .success {{ color: #27ae60; font-size: 48px; margin-bottom: 20px; }}
+                    .title {{ color: #2c3e50; font-size: 28px; font-weight: bold; margin-bottom: 15px; }}
+                    .message {{ color: #666; margin-bottom: 30px; font-size: 16px; line-height: 1.5; }}
+                    .details {{ background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: left; }}
+                    .premium-badge {{ background: linear-gradient(45deg, #f39c12, #e67e22); color: white; padding: 10px 20px; border-radius: 25px; display: inline-block; margin: 20px 0; font-weight: bold; }}
+                    .button {{ background: #27ae60; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold; margin-top: 20px; }}
+                    .button:hover {{ background: #229954; }}
+                </style>
+            </head>
             <body>
-                <h1>Error</h1>
-                <p>Ocurrió un error al procesar la respuesta: {str(e)}</p>
-                <a href="/">Volver al inicio</a>
+                <div class="container">
+                    <div class="success">🎉</div>
+                    <div class="title">¡Bienvenido a CowTracker Premium!</div>
+                    <div class="premium-badge">✨ CUENTA PREMIUM ACTIVADA ✨</div>
+                    <div class="message">
+                        Tu pago ha sido procesado exitosamente y tu cuenta ha sido actualizada a Premium. 
+                        ¡Ya puedes disfrutar de todas las funcionalidades avanzadas!
+                    </div>
+                    <div class="details">
+                        <strong>📋 Detalles del pago:</strong><br><br>
+                        🆔 Orden: {buy_order}<br>
+                        💰 Monto: ${amount:,} CLP<br>
+                        🔐 Autorización: {transaction_result.get('authorization_code', 'N/A')}<br>
+                        📅 Fecha: {transaction_result.get('transaction_date', 'N/A')}
+                    </div>
+                    <div class="message">
+                        <strong>🚀 Funcionalidades Premium activadas:</strong><br>
+                        • Registro ilimitado de ganado<br>
+                        • Reportes avanzados y estadísticas<br>
+                        • Exportación de datos<br>
+                        • Soporte prioritario 24/7<br>
+                        • Sincronización en la nube
+                    </div>
+                    <a href="#" onclick="window.close()" class="button">🏠 Volver a CowTracker</a>
+                </div>
+                <script>
+                    // Auto-cerrar después de 10 segundos
+                    setTimeout(function() {{
+                        window.close();
+                    }}, 10000);
+                </script>
             </body>
-        </html>
+            </html>
+        """)
+        
+    except Exception as e:
+        print(f"❌ Error en webpay_return: {str(e)}")
+        return HTMLResponse(content=f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Error del Sistema - CowTracker</title>
+                <meta charset="utf-8">
+                <style>
+                    body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f8f9fa; }}
+                    .container {{ max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+                    .error {{ color: #e74c3c; font-size: 24px; margin-bottom: 20px; }}
+                    .message {{ color: #666; margin-bottom: 30px; }}
+                    .button {{ background: #3498db; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="error">❌ Error del Sistema</div>
+                    <div class="message">
+                        Ocurrió un error inesperado al procesar tu pago. 
+                        Por favor, contacta a soporte técnico.
+                    </div>
+                    <div class="message">
+                        <small>Error: {str(e)}</small>
+                    </div>
+                    <a href="#" onclick="window.close()" class="button">Cerrar Ventana</a>
+                </div>
+            </body>
+            </html>
         """)
 
 @app.get("/webpay/status/{token}")
