@@ -1,35 +1,43 @@
 from transbank.webpay.webpay_plus.transaction import Transaction
-from transbank.common.options import Options
 from transbank.common.integration_commerce_codes import IntegrationCommerceCodes
 from transbank.common.integration_api_keys import IntegrationApiKeys
 from transbank.common.integration_type import IntegrationType
 import uuid
 from datetime import datetime
 from typing import Dict, Any
+from config import WebpayConfig
 
 class WebpayService:
-    def __init__(self, environment: str = "integration"):
+    def __init__(self, environment: str = None):
         """
         Inicializa el servicio de Webpay Plus
         
         Args:
             environment: "integration" para pruebas, "production" para producción
+                        Si no se especifica, se obtiene de las variables de entorno
         """
-        if environment == "integration":
-            self.options = Options(
-                commerce_code=IntegrationCommerceCodes.WEBPAY_PLUS,
-                api_key=IntegrationApiKeys.WEBPAY,
-                integration_type=IntegrationType.TEST
-            )
+        # Usar el ambiente especificado o el de la configuración
+        if environment:
+            self.environment = environment
         else:
-            # Para producción, deberás configurar tus credenciales reales
-            self.options = Options(
-                commerce_code="TU_CODIGO_COMERCIO",  # Reemplazar con código real
-                api_key="TU_API_KEY",  # Reemplazar con API key real
-                integration_type=IntegrationType.LIVE
-            )
+            self.environment = WebpayConfig.get_environment()
         
-        self.transaction = Transaction(self.options)
+        try:
+            if self.environment == "integration":
+                # Configurar para integración usando las credenciales de las variables de entorno
+                Transaction.commerce_code = WebpayConfig.get_commerce_code()
+                Transaction.api_key = WebpayConfig.get_api_key()
+                Transaction.integration_type = IntegrationType.TEST
+            else:
+                # Configurar para producción usando las credenciales de las variables de entorno
+                Transaction.commerce_code = WebpayConfig.get_commerce_code()
+                Transaction.api_key = WebpayConfig.get_api_key()
+                Transaction.integration_type = IntegrationType.LIVE
+            
+            self.transaction = Transaction()
+            
+        except ValueError as e:
+            raise ValueError(f"Error de configuración de Webpay: {str(e)}")
     
     def create_transaction(self, amount: int, buy_order: str = None, session_id: str = None, return_url: str = None) -> Dict[str, Any]:
         """
@@ -53,7 +61,7 @@ class WebpayService:
                 session_id = f"session_{uuid.uuid4().hex[:8]}"
             
             if not return_url:
-                return_url = "http://localhost:8000/webpay/return"  # URL por defecto
+                return_url = WebpayConfig.get_return_url()
             
             # Crear la transacción
             response = self.transaction.create(
@@ -70,6 +78,7 @@ class WebpayService:
                 "buy_order": buy_order,
                 "session_id": session_id,
                 "amount": amount,
+                "environment": self.environment,
                 "created_at": datetime.now().isoformat()
             }
             
@@ -77,7 +86,8 @@ class WebpayService:
             return {
                 "success": False,
                 "error": str(e),
-                "message": "Error al crear la transacción"
+                "message": "Error al crear la transacción",
+                "environment": self.environment
             }
     
     def confirm_transaction(self, token: str) -> Dict[str, Any]:
@@ -108,14 +118,16 @@ class WebpayService:
                 "authorization_code": response.authorization_code,
                 "payment_type_code": response.payment_type_code,
                 "response_code": response.response_code,
-                "installments_number": response.installments_number
+                "installments_number": response.installments_number,
+                "environment": self.environment
             }
             
         except Exception as e:
             return {
                 "success": False,
                 "error": str(e),
-                "message": "Error al confirmar la transacción"
+                "message": "Error al confirmar la transacción",
+                "environment": self.environment
             }
     
     def get_transaction_status(self, token: str) -> Dict[str, Any]:
@@ -146,14 +158,16 @@ class WebpayService:
                 "authorization_code": response.authorization_code,
                 "payment_type_code": response.payment_type_code,
                 "response_code": response.response_code,
-                "installments_number": response.installments_number
+                "installments_number": response.installments_number,
+                "environment": self.environment
             }
             
         except Exception as e:
             return {
                 "success": False,
                 "error": str(e),
-                "message": "Error al obtener el estado de la transacción"
+                "message": "Error al obtener el estado de la transacción",
+                "environment": self.environment
             }
     
     def refund_transaction(self, token: str, amount: int) -> Dict[str, Any]:
@@ -177,12 +191,14 @@ class WebpayService:
                 "authorization_date": response.authorization_date,
                 "nullified_amount": response.nullified_amount,
                 "balance": response.balance,
-                "response_code": response.response_code
+                "response_code": response.response_code,
+                "environment": self.environment
             }
             
         except Exception as e:
             return {
                 "success": False,
                 "error": str(e),
-                "message": "Error al anular la transacción"
+                "message": "Error al anular la transacción",
+                "environment": self.environment
             } 

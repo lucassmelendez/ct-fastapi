@@ -9,13 +9,15 @@ API REST para el sistema de seguimiento de ganado CowTracker, desarrollada con F
 - **Documentación automática**: Swagger UI y ReDoc incluidos
 - **CORS configurado**: Listo para frontend
 - **Validación de datos**: Con Pydantic
+- **Variables de entorno**: Configuración segura y flexible
 - **Optimizado para Vercel**: Configuración lista para despliegue
 
 ## 📋 Endpoints Disponibles
 
 ### Información General
-- `GET /` - Mensaje de bienvenida
+- `GET /` - Mensaje de bienvenida y estado de Webpay
 - `GET /health` - Estado de salud de la API
+- `GET /config` - Verificar configuración (sin mostrar credenciales)
 - `GET /docs` - Documentación Swagger UI
 - `GET /redoc` - Documentación ReDoc
 
@@ -44,36 +46,60 @@ API REST para el sistema de seguimiento de ganado CowTracker, desarrollada con F
 
 ## 🛠️ Instalación Local
 
-1. **Clonar el repositorio**
+### 1. Configurar Variables de Entorno
+
+**Paso 1:** Copia el archivo de plantilla
 ```bash
 cd ct-FastApi
+cp env.template .env
 ```
 
-2. **Crear entorno virtual**
+**Paso 2:** El archivo `.env` ya contiene las credenciales de integración de Webpay Plus:
 ```bash
+# Configuración de Webpay Plus - Ambiente de Integración
+WEBPAY_ENVIRONMENT=integration
+WEBPAY_COMMERCE_CODE=597055555532
+WEBPAY_API_KEY=579B532A7440BB0C9079DED94D31EA1615BACEB56610332264630D42D0A36B1C
+
+# URLs de retorno
+WEBPAY_RETURN_URL=http://localhost:8000/webpay/return
+
+# Configuración de la aplicación
+APP_HOST=0.0.0.0
+APP_PORT=8000
+APP_DEBUG=true
+
+# CORS (separar múltiples orígenes con comas)
+CORS_ORIGINS=http://localhost:3000,http://localhost:8080,http://127.0.0.1:5500
+```
+
+### 2. Instalar Dependencias
+
+```bash
+# Crear entorno virtual
 python -m venv venv
-```
 
-3. **Activar entorno virtual**
-```bash
+# Activar entorno virtual
 # Windows
 venv\Scripts\activate
-
 # Linux/Mac
 source venv/bin/activate
-```
 
-4. **Instalar dependencias**
-```bash
+# Instalar dependencias
 pip install -r requirements.txt
 ```
 
-5. **Ejecutar la aplicación**
+### 3. Ejecutar la Aplicación
+
 ```bash
 python main.py
 ```
 
 La API estará disponible en: `http://localhost:8000`
+
+### 4. Verificar Configuración
+
+Visita `http://localhost:8000/config` para verificar que Webpay esté configurado correctamente.
 
 ## 🧪 Pruebas con Webpay Plus
 
@@ -119,6 +145,11 @@ curl -X POST "http://localhost:8000/cows/1/purchase" \
      }'
 ```
 
+### Verificar configuración
+```bash
+curl "http://localhost:8000/config"
+```
+
 ### Obtener estado de una transacción
 ```bash
 curl "http://localhost:8000/webpay/status/TOKEN_AQUI"
@@ -126,11 +157,24 @@ curl "http://localhost:8000/webpay/status/TOKEN_AQUI"
 
 ## 🌐 Despliegue en Vercel
 
+### Variables de Entorno en Vercel
+
+En el dashboard de Vercel, configura las siguientes variables de entorno:
+
+```
+WEBPAY_ENVIRONMENT=integration
+WEBPAY_COMMERCE_CODE=597055555532
+WEBPAY_API_KEY=579B532A7440BB0C9079DED94D31EA1615BACEB56610332264630D42D0A36B1C
+WEBPAY_RETURN_URL=https://tu-dominio.vercel.app/webpay/return
+CORS_ORIGINS=https://tu-frontend.vercel.app,http://localhost:3000
+```
+
 ### Opción 1: Desde GitHub
 1. Sube tu código a un repositorio de GitHub
 2. Conecta tu cuenta de Vercel con GitHub
 3. Importa el proyecto desde Vercel Dashboard
-4. Vercel detectará automáticamente la configuración
+4. Configura las variables de entorno
+5. Vercel detectará automáticamente la configuración
 
 ### Opción 2: Vercel CLI
 1. **Instalar Vercel CLI**
@@ -148,7 +192,15 @@ vercel login
 vercel
 ```
 
-4. **Desplegar a producción**
+4. **Configurar variables de entorno**
+```bash
+vercel env add WEBPAY_ENVIRONMENT
+vercel env add WEBPAY_COMMERCE_CODE
+vercel env add WEBPAY_API_KEY
+vercel env add WEBPAY_RETURN_URL
+```
+
+5. **Desplegar a producción**
 ```bash
 vercel --prod
 ```
@@ -159,6 +211,8 @@ vercel --prod
 ct-FastApi/
 ├── main.py              # Aplicación principal FastAPI
 ├── webpay_service.py    # Servicio de Webpay Plus
+├── config.py            # Configuración y variables de entorno
+├── env.template         # Plantilla de variables de entorno
 ├── api/
 │   └── index.py         # Punto de entrada para Vercel
 ├── requirements.txt     # Dependencias Python
@@ -202,38 +256,44 @@ ct-FastApi/
   "token": "e9d555262db0f989e49d724b4db0b0af367cc415cde41f500a776550fc5fddd7",
   "url": "https://webpay3gint.transbank.cl/webpayserver/initTransaction",
   "buy_order": "cow_order_12345",
-  "amount": 50000
+  "amount": 50000,
+  "environment": "integration"
 }
 ```
 
 ## 🔒 Configuración de Producción
 
-Para usar en producción, debes:
+Para usar en producción, actualiza tu archivo `.env`:
 
-1. **Obtener credenciales reales** de Transbank
-2. **Configurar variables de entorno**:
 ```bash
-WEBPAY_COMMERCE_CODE=tu_codigo_comercio
-WEBPAY_API_KEY=tu_api_key_real
+# Cambiar a producción
 WEBPAY_ENVIRONMENT=production
+
+# Configurar credenciales reales (obtenidas de Transbank)
+WEBPAY_COMMERCE_CODE_PROD=tu_codigo_comercio_real
+WEBPAY_API_KEY_PROD=tu_api_key_real
+
+# URL de retorno de producción
+WEBPAY_RETURN_URL=https://tu-dominio.com/webpay/return
+
+# CORS de producción
+CORS_ORIGINS=https://tu-frontend.com
 ```
 
-3. **Actualizar el servicio**:
-```python
-# En webpay_service.py
-webpay_service = WebpayService(environment="production")
-```
-
-4. **Configurar CORS** con dominios específicos
-5. **Implementar HTTPS** (requerido por Webpay)
+**Requisitos para producción:**
+1. **Obtener credenciales reales** de Transbank
+2. **Implementar HTTPS** (obligatorio para Webpay)
+3. **Configurar dominio real** en URLs de retorno
+4. **Validar certificados SSL**
 
 ## 🔒 Consideraciones de Seguridad
 
 - **HTTPS obligatorio** en producción para Webpay
+- **Variables de entorno** para credenciales sensibles
+- **Archivo .env** excluido del control de versiones
 - Configurar CORS con dominios específicos
 - Validar siempre las respuestas de Webpay
 - Implementar logs de transacciones
-- Usar variables de entorno para credenciales
 - Implementar rate limiting para endpoints de pago
 
 ## 🗄️ Base de Datos
@@ -252,6 +312,12 @@ Una vez desplegada, la documentación estará disponible en:
 
 ## 🆘 Solución de Problemas
 
+### Error: "WEBPAY_COMMERCE_CODE no está configurado"
+```bash
+# Solución: Copia el archivo de plantilla
+cp env.template .env
+```
+
 ### Error: "Token no válido"
 - Verifica que el token no haya expirado (5 minutos)
 - Asegúrate de usar el token correcto en la confirmación
@@ -261,8 +327,12 @@ Una vez desplegada, la documentación estará disponible en:
 - Asegúrate de estar en el ambiente correcto (integración/producción)
 
 ### Error de CORS
-- Configura los orígenes permitidos en el middleware CORS
+- Configura los orígenes permitidos en `CORS_ORIGINS`
 - Verifica que el frontend esté en un dominio permitido
+
+### Webpay no configurado
+- Verifica que el archivo `.env` exista y tenga las variables correctas
+- Revisa los logs de la aplicación al iniciar
 
 ## 📞 Soporte
 

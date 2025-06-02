@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 import uvicorn
 from webpay_service import WebpayService
+from config import AppConfig, WebpayConfig
 
 # Crear la aplicación FastAPI
 app = FastAPI(
@@ -13,17 +14,23 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configurar CORS
+# Configurar CORS usando la configuración
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # En producción, especifica los dominios permitidos
+    allow_origins=AppConfig.get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Inicializar servicio de Webpay
-webpay_service = WebpayService(environment="integration")
+# Inicializar servicio de Webpay (usará la configuración de variables de entorno)
+try:
+    webpay_service = WebpayService()
+    print(f"✅ Webpay configurado correctamente en ambiente: {WebpayConfig.get_environment()}")
+except ValueError as e:
+    print(f"❌ Error de configuración de Webpay: {e}")
+    print("💡 Copia el archivo env.template a .env y configura las variables de entorno")
+    webpay_service = None
 
 # Modelos Pydantic
 class Cow(BaseModel):
@@ -68,11 +75,39 @@ transactions_db = []
 # Rutas de la API
 @app.get("/")
 async def root():
-    return {"message": "Bienvenido a CowTracker API con Webpay Plus", "status": "running"}
+    webpay_status = "enabled" if webpay_service else "disabled (check configuration)"
+    return {
+        "message": "Bienvenido a CowTracker API con Webpay Plus", 
+        "status": "running",
+        "webpay_status": webpay_status,
+        "environment": WebpayConfig.get_environment() if webpay_service else "not configured"
+    }
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "service": "CowTracker API", "webpay": "enabled"}
+    return {
+        "status": "healthy", 
+        "service": "CowTracker API", 
+        "webpay": "enabled" if webpay_service else "disabled",
+        "environment": WebpayConfig.get_environment() if webpay_service else "not configured"
+    }
+
+@app.get("/config")
+async def get_config():
+    """Endpoint para verificar la configuración (sin mostrar credenciales)"""
+    try:
+        return {
+            "webpay_environment": WebpayConfig.get_environment(),
+            "webpay_host": WebpayConfig.get_host(),
+            "return_url": WebpayConfig.get_return_url(),
+            "cors_origins": AppConfig.get_cors_origins(),
+            "app_debug": AppConfig.DEBUG
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "message": "Error de configuración. Verifica que el archivo .env esté configurado correctamente."
+        }
 
 @app.get("/cows", response_model=List[Cow])
 async def get_cows():
@@ -137,6 +172,12 @@ async def get_cows_by_health_status(status: str):
 @app.post("/webpay/create-transaction")
 async def create_webpay_transaction(payment_request: PaymentRequest):
     """Crear una nueva transacción de pago con Webpay Plus"""
+    if not webpay_service:
+        raise HTTPException(
+            status_code=500, 
+            detail="Webpay no está configurado. Verifica las variables de entorno."
+        )
+    
     try:
         result = webpay_service.create_transaction(
             amount=payment_request.amount,
@@ -154,6 +195,7 @@ async def create_webpay_transaction(payment_request: PaymentRequest):
                 "amount": result["amount"],
                 "status": "created",
                 "description": payment_request.description,
+                "environment": result["environment"],
                 "created_at": result["created_at"]
             }
             transactions_db.append(transaction_data)
@@ -165,6 +207,12 @@ async def create_webpay_transaction(payment_request: PaymentRequest):
 @app.post("/cows/{cow_id}/purchase")
 async def purchase_cow(cow_id: int, purchase_request: CowPurchaseRequest):
     """Iniciar el proceso de compra de una vaca"""
+    if not webpay_service:
+        raise HTTPException(
+            status_code=500, 
+            detail="Webpay no está configurado. Verifica las variables de entorno."
+        )
+    
     # Verificar que la vaca existe
     cow = next((cow for cow in cows_db if cow["id"] == cow_id), None)
     if not cow:
@@ -175,7 +223,7 @@ async def purchase_cow(cow_id: int, purchase_request: CowPurchaseRequest):
         amount=cow["price"],
         buy_order=f"cow_{cow_id}_{purchase_request.buyer_name.replace(' ', '_')}",
         session_id=f"session_{cow_id}_{purchase_request.buyer_email.split('@')[0]}",
-        return_url=purchase_request.return_url or "http://localhost:8000/webpay/return",
+        return_url=purchase_request.return_url or WebpayConfig.get_return_url(),
         description=f"Compra de vaca {cow['name']} - {cow['breed']}"
     )
     
@@ -199,6 +247,7 @@ async def purchase_cow(cow_id: int, purchase_request: CowPurchaseRequest):
             "buyer_name": purchase_request.buyer_name,
             "buyer_email": purchase_request.buyer_email,
             "description": payment_request.description,
+            "environment": result["environment"],
             "created_at": result["created_at"]
         }
         transactions_db.append(transaction_data)
@@ -209,7 +258,8 @@ async def purchase_cow(cow_id: int, purchase_request: CowPurchaseRequest):
             "cow": cow,
             "payment_url": result["url"],
             "token": result["token"],
-            "amount": result["amount"]
+            "amount": result["amount"],
+            "environment": result["environment"]
         }
     
     return result
@@ -217,6 +267,12 @@ async def purchase_cow(cow_id: int, purchase_request: CowPurchaseRequest):
 @app.post("/webpay/confirm")
 async def confirm_webpay_transaction(request: Request):
     """Confirmar una transacción de Webpay Plus"""
+    if not webpay_service:
+        raise HTTPException(
+            status_code=500, 
+            detail="Webpay no está configurado. Verifica las variables de entorno."
+        )
+    
     try:
         # Obtener el token del formulario POST
         form_data = await request.form()
@@ -243,6 +299,17 @@ async def confirm_webpay_transaction(request: Request):
 @app.get("/webpay/return")
 async def webpay_return(request: Request):
     """Página de retorno después del pago"""
+    if not webpay_service:
+        return HTMLResponse("""
+        <html>
+            <body>
+                <h1>Error de Configuración</h1>
+                <p>Webpay no está configurado correctamente.</p>
+                <a href="/">Volver al inicio</a>
+            </body>
+        </html>
+        """)
+    
     try:
         # Obtener parámetros de la URL
         token_ws = request.query_params.get("token_ws")
@@ -278,10 +345,12 @@ async def webpay_return(request: Request):
                         body {{ font-family: Arial, sans-serif; margin: 40px; }}
                         .success {{ color: green; }}
                         .info {{ background: #f0f0f0; padding: 20px; margin: 20px 0; }}
+                        .env {{ background: #e8f4fd; padding: 10px; margin: 10px 0; border-radius: 4px; }}
                     </style>
                 </head>
                 <body>
                     <h1 class="success">¡Pago Exitoso!</h1>
+                    <div class="env">Ambiente: {result.get('environment', 'N/A')}</div>
                     <div class="info">
                         <h3>Detalles de la transacción:</h3>
                         <p><strong>Orden de compra:</strong> {result.get('buy_order', 'N/A')}</p>
@@ -309,10 +378,12 @@ async def webpay_return(request: Request):
                         body {{ font-family: Arial, sans-serif; margin: 40px; }}
                         .error {{ color: red; }}
                         .info {{ background: #f0f0f0; padding: 20px; margin: 20px 0; }}
+                        .env {{ background: #e8f4fd; padding: 10px; margin: 10px 0; border-radius: 4px; }}
                     </style>
                 </head>
                 <body>
                     <h1 class="error">Pago Fallido</h1>
+                    <div class="env">Ambiente: {result.get('environment', 'N/A')}</div>
                     <div class="info">
                         <p>Lo sentimos, no se pudo procesar tu pago.</p>
                         <p><strong>Código de respuesta:</strong> {result.get('response_code', 'N/A')}</p>
@@ -337,6 +408,12 @@ async def webpay_return(request: Request):
 @app.get("/webpay/status/{token}")
 async def get_transaction_status(token: str):
     """Obtener el estado de una transacción"""
+    if not webpay_service:
+        raise HTTPException(
+            status_code=500, 
+            detail="Webpay no está configurado. Verifica las variables de entorno."
+        )
+    
     try:
         result = webpay_service.get_transaction_status(token)
         
@@ -353,6 +430,12 @@ async def get_transaction_status(token: str):
 @app.post("/webpay/refund/{token}")
 async def refund_transaction(token: str, amount: int):
     """Anular o reversar una transacción"""
+    if not webpay_service:
+        raise HTTPException(
+            status_code=500, 
+            detail="Webpay no está configurado. Verifica las variables de entorno."
+        )
+    
     try:
         result = webpay_service.refund_transaction(token, amount)
         
@@ -373,7 +456,8 @@ async def get_all_transactions():
     """Obtener todas las transacciones registradas"""
     return {
         "transactions": transactions_db,
-        "total": len(transactions_db)
+        "total": len(transactions_db),
+        "environment": WebpayConfig.get_environment() if webpay_service else "not configured"
     }
 
 @app.get("/transactions/{buy_order}")
@@ -386,4 +470,4 @@ async def get_transaction_by_order(buy_order: str):
 
 # Para desarrollo local
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    uvicorn.run(app, host=AppConfig.HOST, port=AppConfig.PORT, debug=AppConfig.DEBUG) 
