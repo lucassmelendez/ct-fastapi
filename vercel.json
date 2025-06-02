@@ -11,18 +11,5 @@
       "src": "/(.*)",
       "dest": "main.py"
     }
-  ],
-  "env": {
-    "PYTHON_VERSION": "3.9"
-  },
-  "functions": {
-    "api/*.py": {
-      "memory": 1024,
-      "maxDuration": 30
-    },
-    "main.py": {
-      "memory": 1024,
-      "maxDuration": 30
-    }
-  }
+  ]
 } 
