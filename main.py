@@ -891,6 +891,124 @@ async def convert_currency_endpoint(amount: float, from_currency: str = "CLP", t
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en conversión: {str(e)}")
 
+@app.get("/test/mobile-redirect")
+async def test_mobile_redirect(request: Request):
+    """
+    Endpoint de prueba para simular redirección móvil
+    """
+    user_agent = request.headers.get("user-agent", "")
+    is_mobile = is_mobile_device(user_agent)
+    
+    # Simular un token de prueba
+    test_token = "test_token_12345"
+    test_buy_order = "test_order_67890"
+    test_amount = "10000"
+    test_auth = "test_auth_code"
+    
+    if is_mobile:
+        deep_link_url = f"cowtracker://payment/return?token_ws={test_token}&buy_order={test_buy_order}&amount={test_amount}&auth={test_auth}"
+        
+        return HTMLResponse(content=f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Test - Redirigiendo a CowTracker</title>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <style>
+                    body {{ 
+                        font-family: Arial, sans-serif; 
+                        text-align: center; 
+                        padding: 30px; 
+                        background: linear-gradient(135deg, #27ae60, #2ecc71);
+                        margin: 0;
+                    }}
+                    .container {{ 
+                        max-width: 400px; 
+                        margin: 0 auto; 
+                        background: white; 
+                        padding: 30px; 
+                        border-radius: 15px; 
+                        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+                    }}
+                    .title {{ color: #2c3e50; font-size: 24px; font-weight: bold; margin-bottom: 15px; }}
+                    .message {{ color: #666; margin-bottom: 20px; font-size: 16px; line-height: 1.5; }}
+                    .loading {{ color: #27ae60; font-size: 18px; margin: 20px 0; }}
+                    .button {{ 
+                        background: #27ae60; 
+                        color: white; 
+                        padding: 15px 25px; 
+                        text-decoration: none; 
+                        border-radius: 8px; 
+                        display: inline-block; 
+                        font-weight: bold; 
+                        margin: 10px 5px;
+                        font-size: 16px;
+                    }}
+                    .info {{ 
+                        background: #f8f9fa; 
+                        padding: 15px; 
+                        border-radius: 8px; 
+                        margin: 20px 0; 
+                        font-size: 14px;
+                        text-align: left;
+                    }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="title">🧪 Test Deep Link</div>
+                    <div class="message">
+                        Dispositivo móvil detectado.<br>
+                        Probando redirección a CowTracker...
+                    </div>
+                    <div class="info">
+                        <strong>User Agent:</strong><br>
+                        {user_agent}<br><br>
+                        <strong>Deep Link:</strong><br>
+                        {deep_link_url}
+                    </div>
+                    <div class="loading" id="loading">
+                        📱 Redirigiendo en 3 segundos...
+                    </div>
+                    <div id="fallback" style="display: none;">
+                        <a href="{deep_link_url}" class="button">📱 Abrir CowTracker Manualmente</a>
+                    </div>
+                </div>
+                <script>
+                    let countdown = 3;
+                    const loadingElement = document.getElementById('loading');
+                    
+                    const timer = setInterval(function() {{
+                        countdown--;
+                        loadingElement.textContent = `📱 Redirigiendo en ${{countdown}} segundos...`;
+                        
+                        if (countdown <= 0) {{
+                            clearInterval(timer);
+                            loadingElement.textContent = '📱 Abriendo aplicación...';
+                            
+                            // Intentar abrir la aplicación
+                            window.location.href = "{deep_link_url}";
+                            
+                            // Mostrar fallback después de 2 segundos
+                            setTimeout(function() {{
+                                document.getElementById('fallback').style.display = 'block';
+                                loadingElement.style.display = 'none';
+                            }}, 2000);
+                        }}
+                    }}, 1000);
+                </script>
+            </body>
+            </html>
+        """)
+    else:
+        return {
+            "message": "Dispositivo web detectado",
+            "user_agent": user_agent,
+            "is_mobile": is_mobile,
+            "deep_link_would_be": f"cowtracker://payment/return?token_ws={test_token}&buy_order={test_buy_order}&amount={test_amount}&auth={test_auth}"
+        }
+
 @app.get("/currency/rate/{currency}")
 async def get_exchange_rate_endpoint(currency: str = "USD"):
     """
