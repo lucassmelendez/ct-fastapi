@@ -497,7 +497,7 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
             </html>
             """)
         
-        # ✅ Pago exitoso - Redirigir al frontend local para que maneje la actualización
+        # ✅ Pago exitoso - Crear respuesta optimizada para WebView
         buy_order = transaction_result.get('buy_order', '')
         amount = transaction_result.get('amount', 0)
         authorization_code = transaction_result.get('authorization_code', '')
@@ -507,7 +507,7 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
         print(f"   - Monto: {amount}")
         print(f"   - Código de autorización: {authorization_code}")
         
-        # Redirigir al frontend local para que maneje la actualización del usuario
+        # Respuesta optimizada para WebView con detección automática
         return HTMLResponse(content=f"""
             <!DOCTYPE html>
             <html>
@@ -516,21 +516,89 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <style>
-                    body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background: linear-gradient(135deg, #27ae60, #2ecc71); }}
-                    .container {{ max-width: 500px; margin: 0 auto; background: white; padding: 40px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }}
-                    .success {{ color: #27ae60; font-size: 48px; margin-bottom: 20px; }}
-                    .title {{ color: #2c3e50; font-size: 28px; font-weight: bold; margin-bottom: 15px; }}
-                    .message {{ color: #666; margin-bottom: 30px; font-size: 16px; line-height: 1.5; }}
-                    .details {{ background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: left; }}
-                    .premium-badge {{ background: linear-gradient(45deg, #f39c12, #e67e22); color: white; padding: 10px 20px; border-radius: 25px; display: inline-block; margin: 20px 0; font-weight: bold; }}
-                    .loading {{ color: #27ae60; font-size: 18px; margin: 20px 0; }}
-                    .button {{ background: #27ae60; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold; margin: 10px; }}
-                    .button:hover {{ background: #229954; }}
-                    .secondary-button {{ background: #3498db; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold; margin: 10px; }}
-                    .secondary-button:hover {{ background: #2980b9; }}
-                    @media (max-width: 600px) {{ 
-                        body {{ padding: 20px; }}
-                        .container {{ padding: 25px; }}
+                    body {{ 
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+                        text-align: center; 
+                        padding: 20px; 
+                        background: linear-gradient(135deg, #27ae60, #2ecc71); 
+                        margin: 0;
+                        min-height: 100vh;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                    }}
+                    .container {{ 
+                        max-width: 400px; 
+                        width: 100%;
+                        background: white; 
+                        padding: 30px; 
+                        border-radius: 20px; 
+                        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+                        animation: slideUp 0.5s ease-out;
+                    }}
+                    @keyframes slideUp {{
+                        from {{ transform: translateY(30px); opacity: 0; }}
+                        to {{ transform: translateY(0); opacity: 1; }}
+                    }}
+                    .success {{ color: #27ae60; font-size: 60px; margin-bottom: 20px; animation: bounce 1s ease-in-out; }}
+                    @keyframes bounce {{
+                        0%, 20%, 60%, 100% {{ transform: translateY(0); }}
+                        40% {{ transform: translateY(-10px); }}
+                        80% {{ transform: translateY(-5px); }}
+                    }}
+                    .title {{ color: #2c3e50; font-size: 24px; font-weight: bold; margin-bottom: 15px; }}
+                    .message {{ color: #666; margin-bottom: 25px; font-size: 16px; line-height: 1.5; }}
+                    .details {{ 
+                        background: #f8f9fa; 
+                        padding: 20px; 
+                        border-radius: 12px; 
+                        margin: 20px 0; 
+                        text-align: left;
+                        border-left: 4px solid #27ae60;
+                    }}
+                    .premium-badge {{ 
+                        background: linear-gradient(45deg, #f39c12, #e67e22); 
+                        color: white; 
+                        padding: 12px 24px; 
+                        border-radius: 25px; 
+                        display: inline-block; 
+                        margin: 20px 0; 
+                        font-weight: bold;
+                        font-size: 14px;
+                        letter-spacing: 1px;
+                    }}
+                    .loading {{ 
+                        color: #27ae60; 
+                        font-size: 16px; 
+                        margin: 20px 0;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        gap: 10px;
+                    }}
+                    .spinner {{
+                        width: 20px;
+                        height: 20px;
+                        border: 2px solid #e3e3e3;
+                        border-top: 2px solid #27ae60;
+                        border-radius: 50%;
+                        animation: spin 1s linear infinite;
+                    }}
+                    @keyframes spin {{
+                        0% {{ transform: rotate(0deg); }}
+                        100% {{ transform: rotate(360deg); }}
+                    }}
+                    .close-message {{
+                        color: #7f8c8d;
+                        font-size: 14px;
+                        margin-top: 20px;
+                        font-style: italic;
+                    }}
+                    @media (max-width: 480px) {{ 
+                        body {{ padding: 10px; }}
+                        .container {{ padding: 20px; }}
+                        .success {{ font-size: 48px; }}
+                        .title {{ font-size: 20px; }}
                     }}
                 </style>
             </head>
@@ -538,9 +606,9 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                 <div class="container">
                     <div class="success">🎉</div>
                     <div class="title">¡Pago Procesado Exitosamente!</div>
-                    <div class="premium-badge">✨ ACTIVANDO PREMIUM ✨</div>
+                    <div class="premium-badge">✨ PREMIUM ACTIVADO ✨</div>
                     <div class="message">
-                        Tu pago ha sido procesado exitosamente. Serás redirigido a CowTracker para activar tu cuenta Premium.
+                        Tu pago ha sido procesado exitosamente. Tu cuenta Premium está ahora activa.
                     </div>
                     <div class="details">
                         <strong>📋 Detalles del pago:</strong><br><br>
@@ -550,36 +618,74 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                         📅 Fecha: {transaction_result.get('transaction_date', 'N/A')}
                     </div>
                     <div class="loading" id="loading">
-                        🔄 Redirigiendo a CowTracker...
+                        <div class="spinner"></div>
+                        <span>Cerrando ventana de pago...</span>
                     </div>
-                    <div id="buttons" style="display: none;">
-                        <a href="http://localhost:8081/premium/activate?order={buy_order}&amount={amount}&auth={authorization_code}" class="button">
-                            🖥️ Continuar en CowTracker Local
-                        </a>
-                        <a href="cowtracker://premium/activate?order={buy_order}&amount={amount}&auth={authorization_code}" class="secondary-button">
-                            📱 Abrir App CowTracker
-                        </a>
+                    <div class="close-message" id="closeMessage" style="display: none;">
+                        Puedes cerrar esta ventana y continuar usando CowTracker Premium.
                     </div>
                 </div>
                 <script>
-                    // Redirección automática al frontend local después de 2 segundos
-                    setTimeout(function() {{
-                        try {{
-                            // Redirigir al frontend local
-                            window.location.href = "http://localhost:8081/premium/activate?order={buy_order}&amount={amount}&auth={authorization_code}";
-                        }} catch (e) {{
-                            console.error("Error en redirección:", e);
-                            // Mostrar botones como fallback
-                            document.getElementById('loading').style.display = 'none';
-                            document.getElementById('buttons').style.display = 'block';
-                        }}
-                    }}, 2000);
+                    // Función para detectar si estamos en un WebView
+                    function isWebView() {{
+                        const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+                        return /WebView|wv|Android.*Version\/.*Chrome|iPhone.*Mobile.*Safari|iPad.*Mobile.*Safari/.test(userAgent) && 
+                               !/Chrome\/[.0-9]* Mobile/.test(userAgent) && 
+                               !/Version\/[.0-9]* Chrome/.test(userAgent);
+                    }}
                     
-                    // Mostrar botones después de 5 segundos como fallback
-                    setTimeout(function() {{
-                        document.getElementById('loading').style.display = 'none';
-                        document.getElementById('buttons').style.display = 'block';
-                    }}, 5000);
+                    // Función para notificar al WebView que el pago fue exitoso
+                    function notifyPaymentSuccess() {{
+                        // Intentar comunicarse con React Native WebView
+                        if (window.ReactNativeWebView) {{
+                            window.ReactNativeWebView.postMessage(JSON.stringify({{
+                                type: 'PAYMENT_SUCCESS',
+                                data: {{
+                                    buy_order: '{buy_order}',
+                                    amount: {amount},
+                                    authorization_code: '{authorization_code}',
+                                    transaction_date: '{transaction_result.get('transaction_date', 'N/A')}'
+                                }}
+                            }}));
+                        }}
+                        
+                        // También intentar cambiar la URL para que el WebView la detecte
+                        setTimeout(function() {{
+                            // Primero intentar con URL personalizada
+                            window.location.href = "cowtracker://premium/activate?order={buy_order}&amount={amount}&auth={authorization_code}&success=true";
+                        }}, 1000);
+                        
+                        // Fallback: cambiar a una URL que el WebView pueda detectar fácilmente
+                        setTimeout(function() {{
+                            window.location.href = window.location.origin + "/webpay/success?order={buy_order}&amount={amount}&auth={authorization_code}";
+                        }}, 2000);
+                    }}
+                    
+                    // Ejecutar cuando la página carga
+                    document.addEventListener('DOMContentLoaded', function() {{
+                        console.log('✅ Página de éxito cargada');
+                        console.log('🔍 Es WebView:', isWebView());
+                        
+                        // Notificar inmediatamente el éxito
+                        notifyPaymentSuccess();
+                        
+                        // Mostrar mensaje de cierre después de 3 segundos
+                        setTimeout(function() {{
+                            document.getElementById('loading').style.display = 'none';
+                            document.getElementById('closeMessage').style.display = 'block';
+                        }}, 3000);
+                        
+                        // Si no es WebView, intentar redirección tradicional
+                        if (!isWebView()) {{
+                            setTimeout(function() {{
+                                try {{
+                                    window.location.href = "http://localhost:8081/premium/activate?order={buy_order}&amount={amount}&auth={authorization_code}";
+                                }} catch (e) {{
+                                    console.error("Error en redirección:", e);
+                                }}
+                            }}, 2000);
+                        }}
+                    }});
                 </script>
             </body>
             </html>
@@ -614,8 +720,71 @@ async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_C
                     <a href="#" onclick="window.close()" class="button">Cerrar Ventana</a>
                 </div>
             </body>
-        </html>
+                    </html>
         """)
+
+@app.get("/webpay/success")
+async def webpay_success(order: str = None, amount: int = None, auth: str = None):
+    """
+    Endpoint específico para confirmar el éxito del pago (fácil detección por WebView)
+    """
+    return HTMLResponse(content=f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Pago Exitoso - CowTracker</title>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                body {{ 
+                    font-family: Arial, sans-serif; 
+                    text-align: center; 
+                    padding: 20px; 
+                    background: #27ae60; 
+                    color: white;
+                    margin: 0;
+                    min-height: 100vh;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }}
+                .container {{ 
+                    background: rgba(255,255,255,0.1); 
+                    padding: 30px; 
+                    border-radius: 15px; 
+                    backdrop-filter: blur(10px);
+                }}
+                .success {{ font-size: 48px; margin-bottom: 20px; }}
+                .title {{ font-size: 24px; font-weight: bold; margin-bottom: 15px; }}
+                .message {{ font-size: 16px; margin-bottom: 20px; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="success">✅</div>
+                <div class="title">¡Pago Exitoso!</div>
+                <div class="message">Tu cuenta Premium ha sido activada</div>
+                <div class="message">Orden: {order or 'N/A'}</div>
+            </div>
+            <script>
+                // Notificar al WebView inmediatamente
+                if (window.ReactNativeWebView) {{
+                    window.ReactNativeWebView.postMessage(JSON.stringify({{
+                        type: 'PAYMENT_SUCCESS',
+                        data: {{
+                            buy_order: '{order or 'N/A'}',
+                            amount: {amount or 0},
+                            authorization_code: '{auth or 'N/A'}'
+                        }}
+                    }}));
+                }}
+                
+                // Log para debugging
+                console.log('✅ Página de éxito cargada - WebView debería detectar esto');
+            </script>
+        </body>
+        </html>
+    """)
 
 @app.get("/webpay/status/{token}")
 async def get_transaction_status(token: str):
