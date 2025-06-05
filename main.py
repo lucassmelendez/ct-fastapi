@@ -5,7 +5,6 @@ from pydantic import BaseModel
 from typing import List, Optional
 import uvicorn
 import os
-import re
 
 # Configurar variables de entorno para Supabase
 try:
@@ -135,23 +134,6 @@ cows_db = [
 
 # Base de datos de transacciones (en memoria)
 transactions_db = []
-
-# Función para detectar dispositivos móviles
-def is_mobile_device(user_agent: str) -> bool:
-    """
-    Detecta si el user agent corresponde a un dispositivo móvil
-    """
-    if not user_agent:
-        return False
-    
-    mobile_patterns = [
-        r'Mobile', r'Android', r'iPhone', r'iPad', r'iPod',
-        r'BlackBerry', r'Windows Phone', r'Opera Mini',
-        r'IEMobile', r'Mobile Safari', r'webOS', r'Kindle'
-    ]
-    
-    user_agent_lower = user_agent.lower()
-    return any(re.search(pattern.lower(), user_agent_lower) for pattern in mobile_patterns)
 
 # Rutas de la API
 @app.get("/")
@@ -378,23 +360,16 @@ async def confirm_webpay_transaction(request: Request):
         raise HTTPException(status_code=500, detail=f"Error al confirmar transacción: {str(e)}")
 
 @app.get("/webpay/return")
-async def webpay_return(request: Request, token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_COMPRA: str = None, TBK_ID_SESION: str = None):
+async def webpay_return(token_ws: str = None, TBK_TOKEN: str = None, TBK_ORDEN_COMPRA: str = None, TBK_ID_SESION: str = None):
     """
     Endpoint que maneja el retorno desde Webpay después del pago
-    Detecta dispositivos móviles y redirige al deep link de la aplicación
     """
     try:
-        # Obtener información del dispositivo
-        user_agent = request.headers.get("user-agent", "")
-        is_mobile = is_mobile_device(user_agent)
-        
         print(f"🔄 Procesando retorno de Webpay:")
         print(f"   - token_ws: {token_ws}")
         print(f"   - TBK_TOKEN: {TBK_TOKEN}")
         print(f"   - TBK_ORDEN_COMPRA: {TBK_ORDEN_COMPRA}")
         print(f"   - TBK_ID_SESION: {TBK_ID_SESION}")
-        print(f"   - User Agent: {user_agent}")
-        print(f"   - Es móvil: {is_mobile}")
         
         # Si hay TBK_TOKEN, significa que el usuario canceló o hubo error
         if TBK_TOKEN:
@@ -522,7 +497,7 @@ async def webpay_return(request: Request, token_ws: str = None, TBK_TOKEN: str =
             </html>
             """)
         
-        # ✅ Pago exitoso - Manejar redirección según el dispositivo
+        # ✅ Pago exitoso - Redirigir al frontend local para que maneje la actualización
         buy_order = transaction_result.get('buy_order', '')
         amount = transaction_result.get('amount', 0)
         authorization_code = transaction_result.get('authorization_code', '')
@@ -531,92 +506,8 @@ async def webpay_return(request: Request, token_ws: str = None, TBK_TOKEN: str =
         print(f"   - Buy Order: {buy_order}")
         print(f"   - Monto: {amount}")
         print(f"   - Código de autorización: {authorization_code}")
-        print(f"   - Dispositivo móvil: {is_mobile}")
         
-        # Si es un dispositivo móvil, redirigir al deep link de la aplicación
-        if is_mobile:
-            deep_link_url = f"cowtracker://payment/return?token_ws={token_ws}&buy_order={buy_order}&amount={amount}&auth={authorization_code}"
-            print(f"📱 Redirigiendo a aplicación móvil: {deep_link_url}")
-            
-            return HTMLResponse(content=f"""
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Redirigiendo a CowTracker - Pago Exitoso</title>
-                    <meta charset="utf-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <style>
-                        body {{ 
-                            font-family: Arial, sans-serif; 
-                            text-align: center; 
-                            padding: 30px; 
-                            background: linear-gradient(135deg, #27ae60, #2ecc71);
-                            margin: 0;
-                        }}
-                        .container {{ 
-                            max-width: 400px; 
-                            margin: 0 auto; 
-                            background: white; 
-                            padding: 30px; 
-                            border-radius: 15px; 
-                            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-                        }}
-                        .success {{ color: #27ae60; font-size: 48px; margin-bottom: 20px; }}
-                        .title {{ color: #2c3e50; font-size: 24px; font-weight: bold; margin-bottom: 15px; }}
-                        .message {{ color: #666; margin-bottom: 20px; font-size: 16px; line-height: 1.5; }}
-                        .loading {{ color: #27ae60; font-size: 18px; margin: 20px 0; }}
-                        .button {{ 
-                            background: #27ae60; 
-                            color: white; 
-                            padding: 15px 25px; 
-                            text-decoration: none; 
-                            border-radius: 8px; 
-                            display: inline-block; 
-                            font-weight: bold; 
-                            margin: 10px 5px;
-                            font-size: 16px;
-                        }}
-                        .button:hover {{ background: #229954; }}
-                        .fallback {{ 
-                            margin-top: 20px; 
-                            padding: 15px; 
-                            background: #f8f9fa; 
-                            border-radius: 8px; 
-                            font-size: 14px;
-                        }}
-                    </style>
-                </head>
-                <body>
-                    <div class="container">
-                        <div class="success">🎉</div>
-                        <div class="title">¡Pago Exitoso!</div>
-                        <div class="message">
-                            Tu pago ha sido procesado correctamente.<br>
-                            Abriendo CowTracker...
-                        </div>
-                        <div class="loading" id="loading">
-                            📱 Redirigiendo a la aplicación...
-                        </div>
-                        <div id="fallback" class="fallback" style="display: none;">
-                            <p>Si la aplicación no se abre automáticamente:</p>
-                            <a href="{deep_link_url}" class="button">📱 Abrir CowTracker</a>
-                        </div>
-                    </div>
-                    <script>
-                        // Intentar abrir la aplicación inmediatamente
-                        window.location.href = "{deep_link_url}";
-                        
-                        // Mostrar fallback después de 3 segundos
-                        setTimeout(function() {{
-                            document.getElementById('loading').style.display = 'none';
-                            document.getElementById('fallback').style.display = 'block';
-                        }}, 3000);
-                    </script>
-                </body>
-                </html>
-            """)
-        
-        # Si es web, mostrar la página de éxito normal
+        # Redirigir al frontend local para que maneje la actualización del usuario
         return HTMLResponse(content=f"""
             <!DOCTYPE html>
             <html>
